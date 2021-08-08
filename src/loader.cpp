@@ -1,0 +1,199 @@
+// Copyright (c) 2021 midnightBITS
+// This code is licensed under MIT license (see LICENSE for details)
+
+#include <iostream>
+#include <movies/db_info.hpp>
+#include <movies/diff.hpp>
+#include <movies/loader.hpp>
+
+using namespace std::literals;
+
+namespace movies {
+	namespace {
+		map<string, movie_info> known_movies(fs::path const& db_pos) {
+			map<string, movie_info> result{};
+			alpha_2_aliases aka{};
+			aka.load(db_pos);
+
+			auto root = db_pos / "db"sv / "nfo"sv;
+
+			std::error_code ec{};
+			fs::recursive_directory_iterator iterator{root, ec};
+			if (ec) return result;
+
+			for (auto&& entry : iterator) {
+				if (entry.path().extension().generic_u8string() != u8".json")
+					continue;
+				auto json_path = entry.path();
+				auto u8ident = fs::relative(json_path, root).generic_u8string();
+				u8ident = u8ident.substr(0, u8ident.length() - 5);
+
+				movie_info info{};
+				auto const load_result = info.load(db_pos, u8ident, aka);
+				if (load_result == from_result::failed) continue;
+				if (load_result == from_result::updated) {
+					info.store(db_pos, u8ident);
+					fputc('.', stdout);
+					fflush(stdout);
+				}
+				result.insert({u8ident, std::move(info)});
+			}
+
+			return result;
+		}
+
+		vector<string> downloaded_movies(fs::path const& root) {
+			vector<string> result{};
+
+			std::error_code ec{};
+			fs::recursive_directory_iterator iterator{root, ec};
+			if (ec) return result;
+
+			for (auto&& entry : iterator) {
+				if (entry.path().extension().generic_u8string() != u8".mp4")
+					continue;
+				auto movie_path = entry.path();
+				auto u8ident =
+				    fs::relative(movie_path, root).generic_u8string();
+				u8ident = u8ident.substr(0, u8ident.length() - 4);
+				result.emplace_back(std::move(u8ident));
+			}
+
+			std::sort(result.begin(), result.end());
+
+			return result;
+		}
+
+		vector<string> split_simple(vector<string>& infos,
+		                            vector<string>& videos) {
+			vector<string> result, infos_left, videos_left;
+
+			auto it_infos = infos.begin(), it_videos = videos.begin();
+
+			while (it_infos != infos.end() || it_videos != videos.end()) {
+				if (it_infos == infos.end()) {
+					videos_left.insert(videos_left.end(),
+					                   std::make_move_iterator(it_videos),
+					                   std::make_move_iterator(videos.end()));
+					break;
+				}
+
+				if (it_videos == videos.end()) {
+					infos_left.insert(infos_left.end(),
+					                  std::make_move_iterator(it_infos),
+					                  std::make_move_iterator(infos.end()));
+					break;
+				}
+
+				if (*it_infos == *it_videos) {
+					result.push_back(std::move(*it_infos));
+					++it_infos;
+					++it_videos;
+					continue;
+				}
+
+				if (*it_infos < *it_videos) {
+					infos_left.push_back(std::move(*it_infos));
+					++it_infos;
+					continue;
+				}
+
+				videos_left.push_back(std::move(*it_videos));
+				++it_videos;
+			}
+
+			std::swap(infos, infos_left);
+			std::swap(videos, videos_left);
+			return result;
+		}
+
+		std::u8string make_title(std::u8string const& input) {
+			auto const pos = std::u8string_view{input}.find_first_of(u8" \t"sv);
+			if (pos != std::string_view::npos) return input;
+			auto result = input;
+			for (auto& byte : result) {
+				if (byte == '-' || byte == '_') byte = ' ';
+			}
+			if (!result.empty())
+				result.front() =
+				    std::toupper(static_cast<unsigned char>(result.front()));
+			return result;
+		}
+
+		movie_data make_empty(std::optional<std::u8string> const& video_id,
+		                      std::optional<std::u8string> const& info_id) {
+			movie_data result{{}, video_id, info_id};
+			if (video_id)
+				result.info.title.local = make_title(*video_id);
+			else if (info_id)
+				result.info.title.local = make_title(*info_id);
+
+			return result;
+		}
+
+		template <typename Key,
+		          typename Value,
+		          typename Compare,
+		          typename Allocator>
+		auto keys_of(std::map<Key, Value, Compare, Allocator> const& map) {
+			using ReboudAllocator =
+			    std::allocator_traits<Allocator>::template rebind_alloc<Key>;
+			std::vector<Key, ReboudAllocator> result{};
+			result.reserve(map.size());
+			std::transform(
+			    map.begin(), map.end(), std::back_inserter(result),
+			    [](auto const& pair) -> Key const& { return pair.first; });
+
+			return result;
+		}
+	}  // namespace
+
+	vector<movie_data> load_from(fs::path const& db_pos) {
+		auto jsons = known_movies(db_pos);
+		auto infos = keys_of(jsons);
+		auto videos = downloaded_movies(db_pos / "videos");
+
+		auto both = split_simple(infos, videos);
+		auto matching = differ{jsons, infos, videos}.calc();
+
+		vector<movie_data> movies{};
+		movies.reserve(both.size() + matching.size() + infos.size() +
+		               videos.size());
+
+		for (auto const& id : both) {
+			auto it = jsons.find(id);
+			if (it == jsons.end()) {
+				[[unlikely]] movies.push_back(make_empty(id, id));
+				continue;
+			}
+			auto& mv = it->second;
+			movies.push_back({std::move(mv), id, id});
+		}
+
+		for (auto const& diff : matching) {
+			auto it = jsons.find(diff.info);
+			if (it == jsons.end()) {
+				[[unlikely]] movies.push_back(
+				    make_empty(diff.video, diff.info));
+				continue;
+			}
+			auto& mv = it->second;
+			movies.push_back({std::move(mv), diff.video, diff.info});
+		}
+
+		for (auto const& id : videos)
+			movies.push_back(make_empty(id, std::nullopt));
+
+		for (auto const& id : infos) {
+			auto it = jsons.find(id);
+			if (it == jsons.end()) {
+				[[unlikely]] movies.push_back(make_empty(std::nullopt, id));
+				continue;
+			}
+			auto& mv = it->second;
+			movies.push_back({std::move(mv), std::nullopt, id});
+		}
+
+		return movies;
+	}
+}  // namespace movies
