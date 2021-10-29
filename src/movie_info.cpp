@@ -4,6 +4,7 @@
 #include <io/file.hpp>
 #include <iostream>
 #include <iterator>
+#include <format>
 #include <json/json.hpp>
 #include <movies/db_info.hpp>
 #include <movies/movie_info.hpp>
@@ -81,8 +82,7 @@ namespace movies {
 
 		template <typename T>
 		concept JsonLike = requires(T const& obj) {
-			{ obj.to_json() }
-			->std::convertible_to<json::node>;
+			{ obj.to_json() } -> std::convertible_to<json::node>;
 		};
 
 		json::node as_array(std::vector<std::u8string> const& items,

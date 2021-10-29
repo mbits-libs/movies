@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.19)
-project(movie-viewer LANGUAGES CXX VERSION 0.1.0)
+project(movies LANGUAGES CXX VERSION 0.1.0)
 
-set(CMAKE_CXX_STANDARD 20)
+if (MSVC)
+    # https://github.com/microsoft/STL/issues/1814
+    set(CMAKE_CXX_STANDARD 23)
+else()
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
