@@ -105,6 +105,16 @@ namespace movies {
 			return result;
 		}
 
+		json::node as_array_or_value(std::vector<std::u8string> const& items,
+		                             bool nullable = true) {
+			if (items.empty() && nullable) return {};
+			if (items.size() == 1) return items.front();
+			json::array result{};
+			result.reserve(items.size());
+			std::copy(items.begin(), items.end(), std::back_inserter(result));
+			return result;
+		}
+
 		template <JsonLike T>
 		json::node as_array(std::vector<T> const& items, bool nullable = true) {
 			if (items.empty() && nullable) return {};
@@ -132,6 +142,10 @@ namespace movies {
 		template <JsonLike T>
 		json::node as_json(T const& value) {
 			return value.to_json();
+		}
+
+		std::chrono::sys_seconds as_seconds(long long value) {
+			return std::chrono::sys_seconds{std::chrono::seconds{value}};
 		}
 
 		from_result array_from_json(json::array const* input,
@@ -166,6 +180,19 @@ namespace movies {
 				output.emplace_back(*str);
 			}
 			return result;
+		}
+
+		from_result array_from_json(
+		    std::tuple<std::u8string const*, json::array const*> const& input,
+		    std::vector<std::u8string>& output) {
+			auto const& str = std::get<0>(input);
+			if (str) {
+				output.clear();
+				if (str->empty()) return from_result::updated;
+				output.push_back(*str);
+				return from_result::ok;
+			}
+			return array_from_json(std::get<1>(input), output);
 		}
 
 		from_result map_from_json(json::map const* input, people_map& output) {
@@ -490,6 +517,8 @@ namespace movies {
 
 #define OPT(value) \
 	if (value) result[u8## #value] = *value
+#define OPT_DUR(value) \
+	if (value) result[u8## #value] = value->time_since_epoch().count()
 
 #define NULLABLE2(name, key, op)                            \
 	do {                                                    \
@@ -500,6 +529,7 @@ namespace movies {
 
 #define NULLABLE(name, op) NULLABLE2(name, u8## #name, op)
 #define NULLABLE_ARRAY(name) NULLABLE(name, as_array)
+#define NULLABLE_ARRAY_OR_VALUE(name) NULLABLE(name, as_array_or_value)
 #define NULLABLE_MAP(name) NULLABLE(name, as_map)
 #define NULLABLE_OBJ(name) NULLABLE(name, as_json)
 
@@ -517,6 +547,7 @@ namespace movies {
 
 #define LOADS(field_name) LOADS_(field_name, *fld)
 #define LOADN(field_name) LOADN_(field_name, static_cast<unsigned>(*fld))
+#define LOADN_DUR(field_name) LOADN_(field_name, as_seconds(*fld))
 
 #define JSON_CAST(field_name, type) \
 	auto json_##field_name = cast_from_json<type>(data, u8## #field_name##sv)
@@ -824,16 +855,55 @@ namespace movies {
 	MERGE_ARRAY(gallery);
 	MERGE_END()
 
+	json::node dates_info::to_json() const {
+		json::map result{};
+		OPT_DUR(stream);
+		OPT_DUR(poster);
+		if (result.empty()) return {};
+		return result;
+	}
+
+	from_result dates_info::from_json(json::map const& data) {
+		auto result = from_result::ok;
+		LOADN_DUR(stream);
+		LOADN_DUR(poster);
+		return result;
+	}
+
+	MERGE_BEGIN(dates_info)
+	MERGE_OPT(stream);
+	MERGE_OPT(poster);
+	MERGE_END()
+
+	dates_info::opt_seconds dates_info::from_http_date(
+	    std::string const& header) {
+		static constexpr char const* formats[] = {
+		    "%a, %d %b %Y %T GMT",
+		    "%A, %d-%b-%y %T GMT",
+		};
+		for (auto format : formats) {
+			std::istringstream in(header);
+			std::chrono::sys_seconds date{};
+			in >> std::chrono::parse(std::string{format}, date);
+			if (!in.fail()) return date;
+		}
+
+		return std::nullopt;
+	}
+
 	json::map movie_info::to_json() const {
 		json::map result{};
 		NULLABLE_ARRAY(refs);
 		NULLABLE_OBJ(title);
 		NULLABLE_ARRAY(genres);
 		NULLABLE_ARRAY(countries);
+		NULLABLE_ARRAY_OR_VALUE(age);
+		NULLABLE_ARRAY(tags);
 		NULLABLE_OBJ(crew);
 		NULLABLE_MAP(people);
 		OPT(summary);
 		NULLABLE_OBJ(image);
+		NULLABLE_OBJ(dates);
 		OPT(year);
 		OPT(runtime);
 		OPT(rating);
@@ -846,19 +916,24 @@ namespace movies {
 		JSON_CAST_MULTI(title, std::u8string, json::map);
 		JSON_CAST(genres, json::array);
 		JSON_CAST(countries, json::array);
-		JSON_CAST(variants, json::array);
+		JSON_CAST_MULTI(age, std::u8string, json::array);
+		JSON_CAST(tags, json::array);
 		JSON_CAST(crew, json::map);
 		JSON_CAST(people, json::map);
 		JSON_CAST(image, json::map);
+		JSON_CAST(dates, json::map);
 
 		JSON_ARRAY_COPY(refs);
 		JSON_OBJ_COPY(title);
 		JSON_ARRAY_COPY(genres);
 		JSON_ARRAY_COPY(countries);
+		JSON_ARRAY_COPY(age);
+		JSON_ARRAY_COPY(tags);
 		JSON_OBJ_COPY(crew);
 		JSON_MAP_COPY(people);
 		LOADS(summary);
 		JSON_OBJ_COPY(image);
+		JSON_OBJ_COPY(dates);
 		LOADN(year);
 		LOADN(runtime);
 		LOADN(rating);
@@ -871,13 +946,31 @@ namespace movies {
 	MERGE_OBJ(title, which_title);
 	MERGE_ARRAY(genres);
 	MERGE_ARRAY(countries);
+	MERGE_ARRAY(age);
+	MERGE_ARRAY(tags);
 	MERGE_OBJ(crew, people, new_data.people);
 	MERGE_OPT(summary);
 	MERGE_OBJ(image);
+	MERGE_OBJ(dates);
 	MERGE_OPT(year);
 	MERGE_OPT(runtime);
 	MERGE_OPT(rating);
 	MERGE_END()
+
+	void movie_info::add_tag(std::u8string_view tag) {
+		auto it = std::find(tags.begin(), tags.end(), tag);
+		if (it == tags.end()) tags.push_back({tag.data(), tag.size()});
+	}
+
+	void movie_info::remove_tag(std::u8string_view tag) {
+		auto it = std::find(tags.begin(), tags.end(), tag);
+		if (it != tags.end()) tags.erase(it);
+	}
+
+	bool movie_info::has_tag(std::u8string_view tag) const noexcept {
+		auto it = std::find(tags.begin(), tags.end(), tag);
+		return (it != tags.end());
+	}
 
 	std::u8string make_json(std::u8string_view file_root) {
 		static constexpr auto ext = u8".json"sv;

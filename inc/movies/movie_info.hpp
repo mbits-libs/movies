@@ -77,21 +77,39 @@ namespace movies {
 		from_result merge(image_info const&);
 	};
 
+	struct dates_info {
+		using opt_seconds = std::optional<std::chrono::sys_seconds>;
+		opt_seconds stream{};
+		opt_seconds poster{};
+
+		json::node to_json() const;
+		from_result from_json(json::map const& data);
+		from_result merge(dates_info const&);
+
+		static opt_seconds from_http_date(std::string const&);
+	};
+
 	struct movie_info {
 		std::vector<std::u8string> refs;
 		title_info title;
 		std::vector<std::u8string> genres;
 		std::vector<std::u8string> countries;
+		std::vector<std::u8string> age;
+		std::vector<std::u8string> tags;
 
 		crew_info crew;
 		people_map people;
 		std::optional<std::u8string> summary;
 		image_info image;
+		dates_info dates;
 		std::optional<unsigned> year{}, runtime{}, rating{};
 
 		json::map to_json() const;
 		from_result from_json(json::map const& data);
 		from_result merge(movie_info const&, prefer_title);
+		void add_tag(std::u8string_view tag);
+		void remove_tag(std::u8string_view tag);
+		bool has_tag(std::u8string_view tag) const noexcept;
 		bool store(fs::path const& root, std::u8string_view dirname);
 		from_result load(fs::path const& root,
 		                 std::u8string_view dirname,
