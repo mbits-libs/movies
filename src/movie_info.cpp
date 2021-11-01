@@ -1,14 +1,17 @@
 // Copyright (c) 2021 midnightBITS
 // This code is licensed under MIT license (see LICENSE for details)
 
+#include <execution>
+#include <format>
 #include <io/file.hpp>
 #include <iostream>
 #include <iterator>
-#include <format>
 #include <json/json.hpp>
 #include <movies/db_info.hpp>
 #include <movies/movie_info.hpp>
 #include <movies/opt.hpp>
+#include <numeric>
+#include <set>
 
 namespace movies {
 	namespace {
@@ -1047,6 +1050,8 @@ namespace movies {
 		fs::create_directories(img_dir / dirname, ec);
 		if (ec) return false;
 
+		std::set<std::chrono::sys_seconds> mtimes;
+
 		for (auto const& [fname, url] : mapping) {
 			auto filename = img_dir / fname;
 			auto img = nav.open(prepareReq(url, referrer));
@@ -1054,6 +1059,15 @@ namespace movies {
 				std::cout << "Cannot download image for " << filename.string()
 				          << ": " << img.status_text() << '\n';
 				return false;
+			}
+
+			std::chrono::sys_seconds mtime{};
+			if (auto last_modified =
+			        img.headers().find_front(nav::header::Last_Modified)) {
+				auto const mtime =
+				    movies::dates_info::from_http_date(*last_modified);
+				if (mtime && *mtime != std::chrono::sys_seconds{})
+					mtimes.insert(*mtime);
 			}
 
 			auto file = io::file::open(filename, "wb");
@@ -1070,6 +1084,16 @@ namespace movies {
 				std::cout << "Cannot write to " << filename.string() << '\n';
 				return false;
 			}
+		}
+
+		if (!mtimes.empty()) {
+			auto const mtime =
+			    std::reduce(std::execution::par_unseq, mtimes.begin(),
+			                mtimes.end(), std::chrono::sys_seconds{},
+			                [](auto const& lhs, auto const& rhs) {
+				                return std::max(lhs, rhs);
+			                });
+			dates.poster = mtime;
 		}
 
 		return true;
