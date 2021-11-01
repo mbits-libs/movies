@@ -546,7 +546,7 @@ namespace movies {
 	}
 #define LOADS_(field_name, conv) \
 	LOAD_(field_name, std::u8string, fld->empty(), conv)
-#define LOADN_(field_name, conv) LOAD_(field_name, long long, *fld, conv)
+#define LOADN_(field_name, conv) LOAD_(field_name, long long, !*fld, conv)
 
 #define LOADS(field_name) LOADS_(field_name, *fld)
 #define LOADN(field_name) LOADN_(field_name, static_cast<unsigned>(*fld))
