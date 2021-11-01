@@ -90,8 +90,7 @@ namespace movies {
 		std::optional<unsigned> year{}, runtime{}, rating{};
 
 		json::map to_json() const;
-		from_result from_json(json::map const& data,
-		                      alpha_2_aliases const& aka);
+		from_result from_json(json::map const& data);
 		from_result merge(movie_info const&, prefer_title);
 		bool store(fs::path const& root, std::u8string_view dirname);
 		from_result load(fs::path const& root,
