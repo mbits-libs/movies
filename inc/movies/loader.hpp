@@ -5,12 +5,21 @@
 
 #include "fwd.hpp"
 #include "movie_info.hpp"
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 namespace movies {
+	struct file_ref {
+		string id;
+		fs::file_time_type mtime;
+	};
+
 	struct movie_data {
 		movie_info info{};
-		std::optional<string> video_id{};
-		std::optional<string> info_id{};
+
+		std::optional<file_ref> video_file{};
+		std::optional<file_ref> info_file{};
 	};
 
 	vector<movie_data> load_from(fs::path const&);

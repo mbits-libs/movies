@@ -10,6 +10,25 @@ using namespace std::literals;
 
 namespace movies {
 	namespace {
+		fs::file_time_type get_mtime(fs::path const& path) {
+			std::error_code ec{};
+			auto const result = fs::last_write_time(path, ec);
+			if (ec) return {};
+			return result;
+		}
+
+		file_ref get_ref(fs::path const& path, string const& id) {
+			return {id, get_mtime(path)};
+		}
+
+		file_ref info_ref(fs::path const& db_pos, string const& id) {
+			return get_ref(db_pos / "db"sv / "nfo"sv / (id + u8".json"), id);
+		}
+
+		file_ref video_ref(fs::path const& db_pos, string const& id) {
+			return get_ref(db_pos / "videos"sv / (id + u8".mp4"), id);
+		}
+
 		map<string, movie_info> known_movies(fs::path const& db_pos) {
 			map<string, movie_info> result{};
 			alpha_2_aliases aka{};
@@ -120,13 +139,13 @@ namespace movies {
 			return result;
 		}
 
-		movie_data make_empty(std::optional<std::u8string> const& video_id,
-		                      std::optional<std::u8string> const& info_id) {
-			movie_data result{{}, video_id, info_id};
-			if (video_id)
-				result.info.title.local = make_title(*video_id);
-			else if (info_id)
-				result.info.title.local = make_title(*info_id);
+		movie_data make_empty(std::optional<file_ref> const& video_file,
+		                      std::optional<file_ref> const& info_file) {
+			movie_data result{{}, video_file, info_file};
+			if (video_file)
+				result.info.title.local = make_title(video_file->id);
+			else if (info_file)
+				result.info.title.local = make_title(info_file->id);
 
 			return result;
 		}
@@ -163,35 +182,41 @@ namespace movies {
 		for (auto const& id : both) {
 			auto it = jsons.find(id);
 			if (it == jsons.end()) {
-				[[unlikely]] movies.push_back(make_empty(id, id));
+				[[unlikely]] movies.push_back(
+				    make_empty(video_ref(db_pos, id), info_ref(db_pos, id)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back({std::move(mv), id, id});
+			movies.push_back(
+			    {std::move(mv), video_ref(db_pos, id), info_ref(db_pos, id)});
 		}
 
 		for (auto const& diff : matching) {
 			auto it = jsons.find(diff.info);
 			if (it == jsons.end()) {
 				[[unlikely]] movies.push_back(
-				    make_empty(diff.video, diff.info));
+				    make_empty(video_ref(db_pos, diff.video),
+				               info_ref(db_pos, diff.info)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back({std::move(mv), diff.video, diff.info});
+			movies.push_back({std::move(mv), video_ref(db_pos, diff.video),
+			                  info_ref(db_pos, diff.info)});
 		}
 
 		for (auto const& id : videos)
-			movies.push_back(make_empty(id, std::nullopt));
+			movies.push_back(make_empty(video_ref(db_pos, id), std::nullopt));
 
 		for (auto const& id : infos) {
 			auto it = jsons.find(id);
 			if (it == jsons.end()) {
-				[[unlikely]] movies.push_back(make_empty(std::nullopt, id));
+				[[unlikely]] movies.push_back(
+				    make_empty(std::nullopt, info_ref(db_pos, id)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back({std::move(mv), std::nullopt, id});
+			movies.push_back(
+			    {std::move(mv), std::nullopt, info_ref(db_pos, id)});
 		}
 
 		return movies;
