@@ -6,10 +6,23 @@
 #include <movies/diff.hpp>
 #include <movies/loader.hpp>
 
+// define DEBUG_LOADER
+#ifdef DEBUG_LOADER
+#include <format>
+#include <io/file.hpp>
+#include <movies/opt.hpp>
+#endif
+
 using namespace std::literals;
 
 namespace movies {
 	namespace {
+#ifdef DEBUG_LOADER
+		inline auto file_ref_mtime(movies::file_ref const& ref) {
+			return ref.mtime;
+		}
+#endif
+
 		fs::file_time_type get_mtime(fs::path const& path) {
 			std::error_code ec{};
 			auto const result = fs::last_write_time(path, ec);
@@ -165,6 +178,19 @@ namespace movies {
 
 			return result;
 		}
+
+#ifdef DEBUG_LOADER
+		json::string to_string(fs::file_time_type mtime) {
+			using namespace std::chrono;
+			auto const sys = duration_cast<seconds>(
+			    clock_cast<system_clock>(mtime).time_since_epoch());
+			auto local =
+			    zoned_time{current_zone(), sys_seconds{sys}}.get_local_time();
+			auto result = std::format("{:%F %T}", local);
+			return {reinterpret_cast<char8_t const*>(result.data()),
+			        result.length()};
+		}
+#endif
 	}  // namespace
 
 	vector<movie_data> load_from(fs::path const& db_pos) {
@@ -219,6 +245,31 @@ namespace movies {
 			    {std::move(mv), std::nullopt, info_ref(db_pos, id)});
 		}
 
+#ifdef DEBUG_LOADER
+		{
+			std::map<json::string, json::array> dbg{};
+			for (auto const& data : movies) {
+				auto const key =
+				    (data.video_file || data.info_file) >> file_ref_mtime ||
+				    fs::file_time_type{};
+				auto const& title = data.info.title;
+				auto value =
+				    title.local || title.orig || title.sort || string{};
+				dbg[to_string(key)].push_back(std::move(value));
+			}
+			json::map dbg_map{};
+			for (auto& [key, titles] : dbg) {
+				if (titles.size() == 1) {
+					dbg_map[key] = std::move(titles[0]);
+					continue;
+				}
+				dbg_map[key] = std::move(titles);
+			}
+
+			auto file = io::file::open("debug.json", "w");
+			json::write_json(file.get(), dbg_map);
+		}
+#endif
 		return movies;
 	}
 }  // namespace movies
