@@ -455,13 +455,20 @@ namespace movies {
 #define NULLABLE_MAP(name) NULLABLE(name, as_map)
 #define NULLABLE_OBJ(name) NULLABLE(name, as_json)
 
-#define LOADS(field_name)                                                     \
-	if (auto fld = cast_from_json<std::u8string>(data, u8## #field_name##sv)) \
-	field_name = *fld
+#define LOAD_(field_name, type, empty, conv)                           \
+	if (auto fld = cast_from_json<type>(data, u8## #field_name##sv)) { \
+		if (empty) {                                                   \
+			result = from_result::updated;                             \
+		} else {                                                       \
+			field_name = conv;                                         \
+		}                                                              \
+	}
+#define LOADS_(field_name, conv) \
+	LOAD_(field_name, std::u8string, fld->empty(), conv)
+#define LOADN_(field_name, conv) LOAD_(field_name, long long, *fld, conv)
 
-#define LOADN(field_name)                                                 \
-	if (auto fld = cast_from_json<long long>(data, u8## #field_name##sv)) \
-	field_name = static_cast<unsigned>(*fld)
+#define LOADS(field_name) LOADS_(field_name, *fld)
+#define LOADN(field_name) LOADN_(field_name, static_cast<unsigned>(*fld))
 
 #define JSON_CAST(field_name, type) \
 	auto json_##field_name = cast_from_json<type>(data, u8## #field_name##sv)
@@ -540,11 +547,12 @@ namespace movies {
 	}
 
 	from_result title_info::from_json(json::map const& data) {
+		auto result = from_result::ok;
 		LOADS(local);
 		LOADS(orig);
 		LOADS(sort);
 
-		return fixup() ? from_result::updated : from_result::ok;
+		return fixup() ? from_result::updated : result;
 	}
 
 	from_result title_info::merge(title_info const& new_data,
@@ -573,6 +581,19 @@ namespace movies {
 
 	bool title_info::fixup() {
 		bool changed = false;
+
+		if (local && local->empty()) {
+			local = std::nullopt;
+			changed = true;
+		}
+		if (orig && orig->empty()) {
+			orig = std::nullopt;
+			changed = true;
+		}
+		if (sort && sort->empty()) {
+			sort = std::nullopt;
+			changed = true;
+		}
 
 		if (local && orig && *local == *orig) {
 			orig = std::nullopt;
@@ -703,11 +724,12 @@ namespace movies {
 	}
 
 	from_result poster_info::from_json(json::map const& data) {
+		auto result = from_result::ok;
 		LOADS(small);
 		LOADS(large);
 		LOADS(normal);
 
-		return from_result::ok;
+		return result;
 	}
 
 	MERGE_BEGIN(poster_info)
@@ -726,11 +748,11 @@ namespace movies {
 	}
 
 	from_result image_info::from_json(json::map const& data) {
+		auto result = from_result::ok;
 		JSON_CAST(poster, json::map);
 		JSON_CAST(gallery, json::array);
-		LOADS(highlight);
 
-		auto result = from_result::ok;
+		LOADS(highlight);
 		JSON_OBJ_COPY(poster);
 		JSON_ARRAY_COPY(gallery);
 		return result;
