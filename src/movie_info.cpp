@@ -860,6 +860,7 @@ namespace movies {
 
 	json::node dates_info::to_json() const {
 		json::map result{};
+		OPT_DUR(published);
 		OPT_DUR(stream);
 		OPT_DUR(poster);
 		if (result.empty()) return {};
@@ -868,12 +869,14 @@ namespace movies {
 
 	from_result dates_info::from_json(json::map const& data) {
 		auto result = from_result::ok;
+		LOADN_DUR(published);
 		LOADN_DUR(stream);
 		LOADN_DUR(poster);
 		return result;
 	}
 
 	MERGE_BEGIN(dates_info)
+	MERGE_OPT(published);
 	MERGE_OPT(stream);
 	MERGE_OPT(poster);
 	MERGE_END()

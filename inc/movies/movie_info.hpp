@@ -79,6 +79,7 @@ namespace movies {
 
 	struct dates_info {
 		using opt_seconds = std::optional<std::chrono::sys_seconds>;
+		opt_seconds published{};
 		opt_seconds stream{};
 		opt_seconds poster{};
 
