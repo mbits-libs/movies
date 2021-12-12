@@ -905,6 +905,7 @@ namespace movies {
 		NULLABLE_ARRAY(countries);
 		NULLABLE_ARRAY_OR_VALUE(age);
 		NULLABLE_ARRAY(tags);
+		NULLABLE_ARRAY(episodes);
 		NULLABLE_OBJ(crew);
 		NULLABLE_MAP(people);
 		OPT(summary);
@@ -924,6 +925,7 @@ namespace movies {
 		JSON_CAST(countries, json::array);
 		JSON_CAST_MULTI(age, std::u8string, json::array);
 		JSON_CAST(tags, json::array);
+		JSON_CAST(episodes, json::array);
 		JSON_CAST(crew, json::map);
 		JSON_CAST(people, json::map);
 		JSON_CAST(image, json::map);
@@ -935,6 +937,7 @@ namespace movies {
 		JSON_ARRAY_COPY(countries);
 		JSON_ARRAY_COPY(age);
 		JSON_ARRAY_COPY(tags);
+		JSON_ARRAY_COPY(episodes);
 		JSON_OBJ_COPY(crew);
 		JSON_MAP_COPY(people);
 		LOADS(summary);
@@ -954,6 +957,7 @@ namespace movies {
 	MERGE_ARRAY(countries);
 	MERGE_ARRAY(age);
 	MERGE_ARRAY(tags);
+	MERGE_ARRAY(episodes);
 	MERGE_OBJ(crew, people, new_data.people);
 	MERGE_OPT(summary);
 	MERGE_OBJ(image);

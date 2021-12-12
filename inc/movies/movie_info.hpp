@@ -97,6 +97,7 @@ namespace movies {
 		std::vector<std::u8string> countries;
 		std::vector<std::u8string> age;
 		std::vector<std::u8string> tags;
+		std::vector<std::u8string> episodes;
 
 		crew_info crew;
 		people_map people;
