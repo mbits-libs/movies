@@ -1,12 +1,16 @@
 // Copyright (c) 2021 midnightBITS
 // This code is licensed under MIT license (see LICENSE for details)
 
-#include <execution>
+#ifdef _MSC_VER
 #include <format>
+#else
+#include <date/date.h>
+#endif
+#include <execution>
 #include <io/file.hpp>
 #include <iostream>
 #include <iterator>
-#include <json/json.hpp>
+#include <json/serdes.hpp>
 #include <movies/db_info.hpp>
 #include <movies/movie_info.hpp>
 #include <movies/opt.hpp>
@@ -91,92 +95,36 @@ namespace movies {
 			return split_impl<std::u8string>(sep, data, max);
 		}
 
-		template <typename T>
-		concept JsonLike = requires(T const& obj,
-		                            T& lval,
-		                            json::map const& data) {
-			{ obj.to_json() } -> std::convertible_to<json::node>;
-			{ lval.from_json(data) } -> std::convertible_to<from_result>;
-		};
-
-		json::node as_array(std::vector<std::u8string> const& items,
-		                    bool nullable = true) {
-			if (items.empty() && nullable) return {};
-			json::array result{};
-			result.reserve(items.size());
-			std::copy(items.begin(), items.end(), std::back_inserter(result));
-			return result;
-		}
-
-		json::node as_array_or_value(std::vector<std::u8string> const& items,
-		                             bool nullable = true) {
-			if (items.empty() && nullable) return {};
-			if (items.size() == 1) return items.front();
-			json::array result{};
-			result.reserve(items.size());
-			std::copy(items.begin(), items.end(), std::back_inserter(result));
-			return result;
-		}
-
-		template <JsonLike T>
-		json::node as_array(std::vector<T> const& items, bool nullable = true) {
-			if (items.empty() && nullable) return {};
-			json::array result{};
-			result.reserve(items.size());
-			for (auto const& item : items) {
-				auto node = item.to_json();
-				if (std::holds_alternative<std::monostate>(node)) continue;
-				result.emplace_back(std::move(node));
-			}
-
-			return result;
-		}
-
-		json::node as_map(std::map<std::u8string, std::u8string> const& items,
-		                  bool nullable = true) {
-			if (items.empty() && nullable) return {};
-			json::map result{};
-			for (auto const& [key, value] : items) {
-				result.insert({key, value});
-			}
-			return result;
-		}
-
-		template <JsonLike T>
-		json::node as_json(T const& value) {
-			return value.to_json();
-		}
-
 		std::chrono::sys_seconds as_seconds(long long value) {
 			return std::chrono::sys_seconds{std::chrono::seconds{value}};
 		}
 
-		from_result array_from_json(json::array const* input,
-		                            std::vector<person_info>& output) {
-			if (!input) return from_result::ok;
+		json::conv_result array_from_json(json::array const* input,
+		                                  std::vector<person_info>& output) {
+			if (!input) return json::conv_result::ok;
 
 			output.clear();
 			output.reserve(input->size());
 
-			auto result = from_result::ok;
+			auto result = json::conv_result::ok;
 			for (auto const& node : *input) {
 				output.emplace_back();
 				person_info info{};
 				auto const res = output.back().from_json(node);
-				if (res != from_result::ok) result = res;
-				if (result == from_result::failed) break;
+				if (!is_ok(res)) result = res;
+				if (result == json::conv_result::failed) break;
 			}
 			return result;
 		}
 
-		from_result array_from_json(json::array const* input,
-		                            std::vector<std::u8string>& output) {
-			if (!input) return from_result::ok;
+		json::conv_result array_from_json(json::array const* input,
+		                                  std::vector<std::u8string>& output) {
+			if (!input) return json::conv_result::ok;
 
 			output.clear();
 			output.reserve(input->size());
 
-			auto result = from_result::ok;
+			auto result = json::conv_result::ok;
 			for (auto const& node : *input) {
 				auto str = cast<std::u8string>(node);
 				if (!str) continue;
@@ -185,54 +133,35 @@ namespace movies {
 			return result;
 		}
 
-		from_result array_from_json(
+		json::conv_result array_from_json(
 		    std::tuple<std::u8string const*, json::array const*> const& input,
 		    std::vector<std::u8string>& output) {
 			auto const& str = std::get<0>(input);
 			if (str) {
 				output.clear();
-				if (str->empty()) return from_result::updated;
+				if (str->empty()) return json::conv_result::updated;
 				output.push_back(*str);
-				return from_result::ok;
+				return json::conv_result::ok;
 			}
 			return array_from_json(std::get<1>(input), output);
 		}
 
-		from_result map_from_json(json::map const* input, people_map& output) {
-			if (!input) return from_result::ok;
+		json::conv_result map_from_json(json::map const* input,
+		                                people_map& output) {
+			if (!input) return json::conv_result::ok;
 
 			output.clear();
 
-			auto result = from_result::ok;
+			auto result = json::conv_result::ok;
 			for (auto const& [key, value] : *input) {
 				auto fld = cast<std::u8string>(value);
 				if (!fld || fld->empty()) {
-					result = from_result::updated;
+					result = json::conv_result::updated;
 				} else {
 					output[key] = *fld;
 				}
 			}
 			return result;
-		}
-
-		template <json::NodeType Kind, JsonLike ObjectType>
-		from_result object_from_json(Kind const* input, ObjectType& output) {
-			if (!input) return from_result::ok;
-			return output.from_json(*input);
-		}
-
-		from_result object_from_json(
-		    std::tuple<std::u8string const*, json::map const*> const& input,
-		    title_info& output) {
-			auto const& str = std::get<0>(input);
-			if (str) {
-				output.local = std::nullopt;
-				output.orig = std::nullopt;
-				if (str->empty()) return from_result::updated;
-				output.local = *str;
-				return from_result::ok;
-			}
-			return object_from_json(std::get<1>(input), output);
 		}
 
 		template <typename Value>
@@ -250,8 +179,9 @@ namespace movies {
 			return copy;
 		}
 
-		from_result merge_arrays(std::vector<std::u8string>& old_data,
-		                         std::vector<std::u8string> const& new_data) {
+		json::conv_result merge_arrays(
+		    std::vector<std::u8string>& old_data,
+		    std::vector<std::u8string> const& new_data) {
 			auto old_ = indexed(old_data);
 			auto new_ = indexed(new_data, old_.size());
 			auto index_old = size_t{0};
@@ -312,10 +242,10 @@ namespace movies {
 
 			if (old_data != final) {
 				std::swap(old_data, final);
-				return from_result::updated;
+				return json::conv_result::updated;
 			}
 
-			return from_result::ok;
+			return json::conv_result::ok;
 		}
 
 #define TWC(fld) \
@@ -518,68 +448,15 @@ namespace movies {
 #endif
 	}  // namespace
 
-#define OPT(value) \
-	if (value) result[u8## #value] = *value
-#define OPT_DUR(value) \
-	if (value) result[u8## #value] = value->time_since_epoch().count()
-
-#define NULLABLE2(name, key, op)                            \
-	do {                                                    \
-		auto value = op(name);                              \
-		if (!std::holds_alternative<std::monostate>(value)) \
-			result[key] = std::move(value);                 \
-	} while (0)
-
-#define NULLABLE(name, op) NULLABLE2(name, u8## #name, op)
-#define NULLABLE_ARRAY(name) NULLABLE(name, as_array)
-#define NULLABLE_ARRAY_OR_VALUE(name) NULLABLE(name, as_array_or_value)
-#define NULLABLE_MAP(name) NULLABLE(name, as_map)
-#define NULLABLE_OBJ(name) NULLABLE(name, as_json)
-
-#define LOAD_(field_name, type, empty, conv)                           \
-	if (auto fld = cast_from_json<type>(data, u8## #field_name##sv)) { \
-		if (empty) {                                                   \
-			result = from_result::updated;                             \
-		} else {                                                       \
-			field_name = conv;                                         \
-		}                                                              \
-	}
-#define LOADS_(field_name, conv) \
-	LOAD_(field_name, std::u8string, fld->empty(), conv)
-#define LOADN_(field_name, conv) LOAD_(field_name, long long, !*fld, conv)
-
-#define LOADS(field_name) LOADS_(field_name, *fld)
-#define LOADN(field_name) LOADN_(field_name, static_cast<unsigned>(*fld))
-#define LOADN_DUR(field_name) LOADN_(field_name, as_seconds(*fld))
-
 #define JSON_CAST(field_name, type) \
 	auto json_##field_name = cast_from_json<type>(data, u8## #field_name##sv)
-#define JSON_CAST_MULTI(field_name, ...) \
-	auto json_##field_name =             \
-	    cast_from_json_multi<__VA_ARGS__>(data, u8## #field_name##sv)
-
-#define JSON_ARRAY_COPY(field_name)                                          \
-	{                                                                        \
-		if (auto const res = array_from_json(json_##field_name, field_name); \
-		    res != from_result::ok)                                          \
-			result = res;                                                    \
-		if (result == from_result::failed) return result;                    \
-	}
 
 #define JSON_MAP_COPY(field_name)                                          \
 	{                                                                      \
 		if (auto const res = map_from_json(json_##field_name, field_name); \
-		    res != from_result::ok)                                        \
+		    res != json::conv_result::ok)                                  \
 			result = res;                                                  \
-		if (result == from_result::failed) return result;                  \
-	}
-
-#define JSON_OBJ_COPY(field_name)                                             \
-	{                                                                         \
-		if (auto const res = object_from_json(json_##field_name, field_name); \
-		    res != from_result::ok)                                           \
-			result = res;                                                     \
-		if (result == from_result::failed) return result;                     \
+		if (result == json::conv_result::failed) return result;            \
 	}
 
 #define MERGE(field_name)                      \
@@ -588,10 +465,19 @@ namespace movies {
 
 #define CHANGED(field_name) (prev_##field_name != field_name)
 
-#define MERGE_BEGIN(TYPE, ...)                                   \
-	from_result TYPE::merge(TYPE const& new_data, __VA_ARGS__) { \
-		auto result = from_result::ok;                           \
+#ifdef _MSC_VER
+#define MERGE_BEGIN(TYPE, ...)                                         \
+	json::conv_result TYPE::merge(TYPE const& new_data, __VA_ARGS__) { \
+		auto result = json::conv_result::ok;                           \
 		do {
+#else
+#define MERGE_BEGIN(TYPE, ...)                                        \
+	json::conv_result TYPE::merge(TYPE const& new_data __VA_OPT__(, ) \
+	                                  __VA_ARGS__) {                  \
+		auto result = json::conv_result::ok;                          \
+		do {
+#endif
+
 #define MERGE_END() \
 	}               \
 	while (0)       \
@@ -599,32 +485,42 @@ namespace movies {
 	return result;  \
 	}
 
-#define MERGE_VAL(field_name)                                   \
-	{                                                           \
-		MERGE(field_name);                                      \
-		if (CHANGED(field_name)) result = from_result::updated; \
+#define MERGE_VAL(field_name)                                         \
+	{                                                                 \
+		MERGE(field_name);                                            \
+		if (CHANGED(field_name)) result = json::conv_result::updated; \
 	}
 
-#define MERGE_OPT(field_name)                                   \
-	{                                                           \
-		auto const prev_##field_name = field_name;              \
-		field_name = new_data.field_name || field_name;         \
-		if (CHANGED(field_name)) result = from_result::updated; \
+#define MERGE_OPT(field_name)                                         \
+	{                                                                 \
+		auto const prev_##field_name = field_name;                    \
+		field_name = new_data.field_name || field_name;               \
+		if (CHANGED(field_name)) result = json::conv_result::updated; \
 	}
 
-#define MERGE_OBJ(field_name, ...)                              \
-	{                                                           \
-		auto const sub_result =                                 \
-		    field_name.merge(new_data.field_name, __VA_ARGS__); \
-		if (sub_result != from_result::ok) result = sub_result; \
-		if (result == from_result::failed) break;               \
+#ifdef _MSC_VER
+#define MERGE_OBJ(field_name, ...)                                    \
+	{                                                                 \
+		auto const sub_result =                                       \
+		    field_name.merge(new_data.field_name, __VA_ARGS__);       \
+		if (sub_result != json::conv_result::ok) result = sub_result; \
+		if (result == json::conv_result::failed) break;               \
 	}
+#else
+#define MERGE_OBJ(field_name, ...)                                            \
+	{                                                                         \
+		auto const sub_result =                                               \
+		    field_name.merge(new_data.field_name __VA_OPT__(, ) __VA_ARGS__); \
+		if (sub_result != json::conv_result::ok) result = sub_result;         \
+		if (result == json::conv_result::failed) break;                       \
+	}
+#endif
 
 #define MERGE_ARRAY(field_name)                                                \
 	{                                                                          \
 		auto const sub_result = merge_arrays(field_name, new_data.field_name); \
-		if (sub_result != from_result::ok) result = sub_result;                \
-		if (result == from_result::failed) break;                              \
+		if (sub_result != json::conv_result::ok) result = sub_result;          \
+		if (result == json::conv_result::failed) break;                        \
 	}
 
 	json::node title_info::to_json() const {
@@ -640,17 +536,27 @@ namespace movies {
 		                 std::make_move_iterator(values.end())};
 	}
 
-	from_result title_info::from_json(json::map const& data) {
-		auto result = from_result::ok;
-		LOADS(local);
-		LOADS(orig);
-		LOADS(sort);
+	json::conv_result title_info::from_json(std::u8string const* title,
+	                                        json::map const* map) {
+		auto result = json::conv_result::ok;
+		if (title) {
+			local = *title;
+			orig = sort = std::nullopt;
+		} else if (map) {
+			auto const& data = *map;
+			LOAD(local);
+			LOAD(orig);
+			LOAD(sort);
+		} else {
+			fixup();
+			return json::conv_result::opt;
+		}
 
-		return fixup() ? from_result::updated : result;
+		return fixup() ? json::conv_result::updated : result;
 	}
 
-	from_result title_info::merge(title_info const& new_data,
-	                              prefer_title which_title) {
+	json::conv_result title_info::merge(title_info const& new_data,
+	                                    prefer_title which_title) {
 		auto const prev_orig = orig;
 		auto const prev_local = local;
 		auto const prev_sort = sort;
@@ -669,8 +575,8 @@ namespace movies {
 		fixup();
 
 		return CHANGED(local) || CHANGED(orig) || CHANGED(sort)
-		           ? from_result::updated
-		           : from_result::ok;
+		           ? json::conv_result::updated
+		           : json::conv_result::ok;
 	}
 
 	bool title_info::fixup() {
@@ -717,14 +623,14 @@ namespace movies {
 		return json::array{key, *contribution};
 	}
 
-	from_result person_info::from_json(json::node const& data) {
+	json::conv_result person_info::from_json(json::node const& data) {
 		auto str = cast<std::u8string>(data);
 		auto arr = cast<json::array>(data);
 
 		if (str) {
 			key = *str;
 			contribution = std::nullopt;
-			return from_result::ok;
+			return json::conv_result::ok;
 		}
 
 		if (arr && arr->size() == 2) {
@@ -736,45 +642,40 @@ namespace movies {
 					contribution = std::nullopt;
 				else
 					contribution = *contrib;
-				return from_result::ok;
+				return json::conv_result::ok;
 			}
 		}
 
-		return from_result::failed;
+		return json::conv_result::failed;
 	}
 
 	json::node crew_info::to_json() const {
 		json::map result{};
-		NULLABLE_ARRAY(directors);
-		NULLABLE_ARRAY(writers);
-		NULLABLE_ARRAY(cast);
+		STORE(directors);
+		STORE(writers);
+		STORE(cast);
 		if (result.empty()) return {};
 		return result;
 	}
 
-	from_result crew_info::from_json(json::map const& data) {
-		JSON_CAST(directors, json::array);
-		JSON_CAST(writers, json::array);
-		JSON_CAST(cast, json::array);
-
-		auto result = from_result::ok;
-		JSON_ARRAY_COPY(directors);
-		JSON_ARRAY_COPY(writers);
-		JSON_ARRAY_COPY(cast);
-
+	json::conv_result crew_info::from_json(json::map const& data) {
+		auto result = json::conv_result::ok;
+		LOAD(directors);
+		LOAD(writers);
+		LOAD(cast);
 		return result;
 	}
 
-	from_result crew_info::merge(crew_info const& new_data,
-	                             people_map& people,
-	                             people_map const& new_people) {
+	json::conv_result crew_info::merge(crew_info const& new_data,
+	                                   people_map& people,
+	                                   people_map const& new_people) {
 		people_list crew_info::*lists[] = {
 		    &crew_info::directors,
 		    &crew_info::writers,
 		    &crew_info::cast,
 		};
 
-		auto result = from_result::ok;
+		auto result = json::conv_result::ok;
 		people_map used{};
 		for (auto list : lists) {
 			auto new_list = person_info_t::merge(
@@ -796,13 +697,15 @@ namespace movies {
 
 			if (copied != this->*list) {
 				std::swap(copied, this->*list);
-				if (result == from_result::ok) result = from_result::updated;
+				if (result == json::conv_result::ok)
+					result = json::conv_result::updated;
 			}
 		}
 
 		if (used != people) {
 			std::swap(used, people);
-			if (result == from_result::ok) result = from_result::updated;
+			if (result == json::conv_result::ok)
+				result = json::conv_result::updated;
 		}
 
 		return result;
@@ -810,18 +713,18 @@ namespace movies {
 
 	json::node poster_info::to_json() const {
 		json::map result{};
-		OPT(small);
-		OPT(large);
-		OPT(normal);
+		STORE(small);
+		STORE(large);
+		STORE(normal);
 		if (result.empty()) return {};
 		return result;
 	}
 
-	from_result poster_info::from_json(json::map const& data) {
-		auto result = from_result::ok;
-		LOADS(small);
-		LOADS(large);
-		LOADS(normal);
+	json::conv_result poster_info::from_json(json::map const& data) {
+		auto result = json::conv_result::ok;
+		LOAD(small);
+		LOAD(large);
+		LOAD(normal);
 
 		return result;
 	}
@@ -834,21 +737,18 @@ namespace movies {
 
 	json::node image_info::to_json() const {
 		json::map result{};
-		OPT(highlight);
-		NULLABLE_OBJ(poster);
-		NULLABLE_ARRAY(gallery);
+		STORE(highlight);
+		STORE(poster);
+		STORE(gallery);
 		if (result.empty()) return {};
 		return result;
 	}
 
-	from_result image_info::from_json(json::map const& data) {
-		auto result = from_result::ok;
-		JSON_CAST(poster, json::map);
-		JSON_CAST(gallery, json::array);
-
-		LOADS(highlight);
-		JSON_OBJ_COPY(poster);
-		JSON_ARRAY_COPY(gallery);
+	json::conv_result image_info::from_json(json::map const& data) {
+		auto result = json::conv_result::ok;
+		LOAD_EX(json::load(data, NAMED(highlight)));
+		LOAD(poster);
+		LOAD(gallery);
 		return result;
 	}
 
@@ -860,18 +760,18 @@ namespace movies {
 
 	json::node dates_info::to_json() const {
 		json::map result{};
-		OPT_DUR(published);
-		OPT_DUR(stream);
-		OPT_DUR(poster);
+		STORE(published);
+		STORE(stream);
+		STORE(poster);
 		if (result.empty()) return {};
 		return result;
 	}
 
-	from_result dates_info::from_json(json::map const& data) {
-		auto result = from_result::ok;
-		LOADN_DUR(published);
-		LOADN_DUR(stream);
-		LOADN_DUR(poster);
+	json::conv_result dates_info::from_json(json::map const& data) {
+		auto result = json::conv_result::ok;
+		LOAD(published);
+		LOAD(stream);
+		LOAD(poster);
 		return result;
 	}
 
@@ -889,9 +789,13 @@ namespace movies {
 		};
 		for (auto format : formats) {
 			std::istringstream in(header);
-			std::chrono::sys_seconds date{};
-			in >> std::chrono::parse(std::string{format}, date);
-			if (!in.fail()) return date;
+			std::chrono::sys_seconds result{};
+#ifdef _MSC_VER
+			in >> std::chrono::parse(std::string{format}, result);
+#else
+			in >> date::parse(std::string{format}, result);
+#endif
+			if (!in.fail()) return result;
 		}
 
 		return std::nullopt;
@@ -899,53 +803,43 @@ namespace movies {
 
 	json::map movie_info::to_json() const {
 		json::map result{};
-		NULLABLE_ARRAY(refs);
-		NULLABLE_OBJ(title);
-		NULLABLE_ARRAY(genres);
-		NULLABLE_ARRAY(countries);
-		NULLABLE_ARRAY_OR_VALUE(age);
-		NULLABLE_ARRAY(tags);
-		NULLABLE_ARRAY(episodes);
-		NULLABLE_OBJ(crew);
-		NULLABLE_MAP(people);
-		OPT(summary);
-		NULLABLE_OBJ(image);
-		NULLABLE_OBJ(dates);
-		OPT(year);
-		OPT(runtime);
-		OPT(rating);
+		STORE(refs);
+		STORE(title);
+		STORE(genres);
+		STORE(countries);
+		STORE_OR_VALUE(age);
+		STORE(tags);
+		STORE(episodes);
+		STORE(crew);
+		STORE(people);
+		STORE(summary);
+		STORE(image);
+		STORE(dates);
+		STORE(year);
+		STORE(runtime);
+		STORE(rating);
 		return result;
 	}
 
-	from_result movie_info::from_json(json::map const& data) {
-		auto result = from_result::ok;
-		JSON_CAST(refs, json::array);
-		JSON_CAST_MULTI(title, std::u8string, json::map);
-		JSON_CAST(genres, json::array);
-		JSON_CAST(countries, json::array);
-		JSON_CAST_MULTI(age, std::u8string, json::array);
-		JSON_CAST(tags, json::array);
-		JSON_CAST(episodes, json::array);
-		JSON_CAST(crew, json::map);
+	json::conv_result movie_info::from_json(json::map const& data) {
+		auto result = json::conv_result::ok;
 		JSON_CAST(people, json::map);
-		JSON_CAST(image, json::map);
-		JSON_CAST(dates, json::map);
 
-		JSON_ARRAY_COPY(refs);
-		JSON_OBJ_COPY(title);
-		JSON_ARRAY_COPY(genres);
-		JSON_ARRAY_COPY(countries);
-		JSON_ARRAY_COPY(age);
-		JSON_ARRAY_COPY(tags);
-		JSON_ARRAY_COPY(episodes);
-		JSON_OBJ_COPY(crew);
+		LOAD(refs);
+		LOAD_MULTI(title, std::u8string, json::map);
+		LOAD(genres);
+		LOAD(countries);
+		LOAD_OR_VALUE(age);
+		LOAD(tags);
+		LOAD(episodes);
+		LOAD(crew);
 		JSON_MAP_COPY(people);
-		LOADS(summary);
-		JSON_OBJ_COPY(image);
-		JSON_OBJ_COPY(dates);
-		LOADN(year);
-		LOADN(runtime);
-		LOADN(rating);
+		LOAD(summary);
+		LOAD(image);
+		LOAD(dates);
+		LOAD(year);
+		LOAD(runtime);
+		LOAD(rating);
 
 		return result;
 	}
@@ -1009,22 +903,18 @@ namespace movies {
 		return true;
 	}
 
-	from_result movie_info::load(fs::path const& root,
-	                             std::u8string_view dirname,
-	                             alpha_2_aliases const& aka) {
+	json::conv_result movie_info::load(fs::path const& root,
+	                                   std::u8string_view dirname,
+	                                   alpha_2_aliases const& aka) {
 		auto const json_filename = root / "db"sv / "nfo"sv / make_json(dirname);
 
 		auto const data = io::contents(json_filename);
 		auto node = json::read_json({data.data(), data.size()});
 
-		auto result = from_result::ok;
-		auto json_self = cast<json::map>(node);
+		auto result = json::conv_result::ok;
+		LOAD_EX(::json::load(node, *this));
 
-		if (!json_self) return from_result::failed;
-		auto& self = *this;
-		JSON_OBJ_COPY(self);
-
-		if (map_countries(aka)) result = from_result::updated;
+		if (map_countries(aka)) result = json::conv_result::updated;
 		return result;
 	}
 

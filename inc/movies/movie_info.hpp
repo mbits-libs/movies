@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <json/json.hpp>
+#include <json/serdes.hpp>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -17,8 +18,6 @@
 namespace fs = std::filesystem;
 
 namespace movies {
-	enum class from_result { ok, failed, updated };
-
 	struct alpha_2_aliases;
 
 	enum class prefer_title { mine, theirs };
@@ -30,8 +29,9 @@ namespace movies {
 		std::optional<std::u8string> sort;
 
 		json::node to_json() const;
-		from_result from_json(json::map const& data);
-		from_result merge(title_info const&, prefer_title);
+		json::conv_result from_json(std::u8string const* title,
+		                            json::map const* data);
+		json::conv_result merge(title_info const&, prefer_title);
 		bool fixup();
 	};
 
@@ -42,7 +42,7 @@ namespace movies {
 		auto operator<=>(person_info const&) const = default;
 
 		json::node to_json() const;
-		from_result from_json(json::node const& data);
+		json::conv_result from_json(json::node const& data);
 	};
 
 	struct crew_info {
@@ -52,10 +52,10 @@ namespace movies {
 		people_list cast;
 
 		json::node to_json() const;
-		from_result from_json(json::map const& data);
-		from_result merge(crew_info const& new_data,
-		                  people_map& people,
-		                  people_map const& new_people);
+		json::conv_result from_json(json::map const& data);
+		json::conv_result merge(crew_info const& new_data,
+		                        people_map& people,
+		                        people_map const& new_people);
 	};
 
 	struct poster_info {
@@ -63,8 +63,8 @@ namespace movies {
 		std::optional<std::u8string> large;
 		std::optional<std::u8string> normal;
 		json::node to_json() const;
-		from_result from_json(json::map const& data);
-		from_result merge(poster_info const&);
+		json::conv_result from_json(json::map const& data);
+		json::conv_result merge(poster_info const&);
 	};
 
 	struct image_info {
@@ -73,8 +73,8 @@ namespace movies {
 		std::vector<std::u8string> gallery;
 
 		json::node to_json() const;
-		from_result from_json(json::map const& data);
-		from_result merge(image_info const&);
+		json::conv_result from_json(json::map const& data);
+		json::conv_result merge(image_info const&);
 	};
 
 	struct dates_info {
@@ -84,8 +84,8 @@ namespace movies {
 		opt_seconds poster{};
 
 		json::node to_json() const;
-		from_result from_json(json::map const& data);
-		from_result merge(dates_info const&);
+		json::conv_result from_json(json::map const& data);
+		json::conv_result merge(dates_info const&);
 
 		static opt_seconds from_http_date(std::string const&);
 	};
@@ -107,15 +107,15 @@ namespace movies {
 		std::optional<unsigned> year{}, runtime{}, rating{};
 
 		json::map to_json() const;
-		from_result from_json(json::map const& data);
-		from_result merge(movie_info const&, prefer_title);
+		json::conv_result from_json(json::map const& data);
+		json::conv_result merge(movie_info const&, prefer_title);
 		void add_tag(std::u8string_view tag);
 		void remove_tag(std::u8string_view tag);
 		bool has_tag(std::u8string_view tag) const noexcept;
 		bool store(fs::path const& root, std::u8string_view dirname);
-		from_result load(fs::path const& root,
-		                 std::u8string_view dirname,
-		                 alpha_2_aliases const& aka);
+		json::conv_result load(fs::path const& root,
+		                       std::u8string_view dirname,
+		                       alpha_2_aliases const& aka);
 		bool map_countries(alpha_2_aliases const& aka);
 
 #ifdef MOVIES_HAS_NAVIGATOR
