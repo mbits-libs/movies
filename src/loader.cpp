@@ -6,7 +6,7 @@
 #include <movies/diff.hpp>
 #include <movies/loader.hpp>
 
-// define DEBUG_LOADER
+// #define DEBUG_LOADER
 #ifdef DEBUG_LOADER
 #include <format>
 #include <io/file.hpp>
@@ -34,20 +34,20 @@ namespace movies {
 			return {id, get_mtime(path)};
 		}
 
-		file_ref info_ref(fs::path const& db_pos, string const& id) {
-			return get_ref(db_pos / "db"sv / "nfo"sv / (id + u8".json"), id);
+		file_ref info_ref(fs::path const& db_root, string const& id) {
+			return get_ref(db_root / "nfo"sv / (id + u8".json"), id);
 		}
 
-		file_ref video_ref(fs::path const& db_pos, string const& id) {
-			return get_ref(db_pos / "videos"sv / (id + u8".mp4"), id);
+		file_ref video_ref(fs::path const& videos_root, string const& id) {
+			return get_ref(videos_root / (id + u8".mp4"), id);
 		}
 
-		map<string, movie_info> known_movies(fs::path const& db_pos) {
+		map<string, movie_info> known_movies(fs::path const& db_root) {
 			map<string, movie_info> result{};
 			alpha_2_aliases aka{};
-			aka.load(db_pos);
+			aka.load(db_root);
 
-			auto root = db_pos / "db"sv / "nfo"sv;
+			auto root = db_root / "nfo"sv;
 
 			std::error_code ec{};
 			fs::recursive_directory_iterator iterator{root, ec};
@@ -61,10 +61,10 @@ namespace movies {
 				u8ident = u8ident.substr(0, u8ident.length() - 5);
 
 				movie_info info{};
-				auto const load_result = info.load(db_pos, u8ident, aka);
-				if (load_result == from_result::failed) continue;
-				if (load_result == from_result::updated) {
-					info.store(db_pos, u8ident);
+				auto const load_result = info.load(db_root, u8ident, aka);
+				if (load_result == json::conv_result::failed) continue;
+				if (load_result == json::conv_result::updated) {
+					info.store(db_root, u8ident);
 					fputc('.', stdout);
 					fflush(stdout);
 				}
@@ -74,11 +74,11 @@ namespace movies {
 			return result;
 		}
 
-		vector<string> downloaded_movies(fs::path const& root) {
+		vector<string> downloaded_movies(fs::path const& videos_root) {
 			vector<string> result{};
 
 			std::error_code ec{};
-			fs::recursive_directory_iterator iterator{root, ec};
+			fs::recursive_directory_iterator iterator{videos_root, ec};
 			if (ec) return result;
 
 			for (auto&& entry : iterator) {
@@ -86,7 +86,7 @@ namespace movies {
 					continue;
 				auto movie_path = entry.path();
 				auto u8ident =
-				    fs::relative(movie_path, root).generic_u8string();
+				    fs::relative(movie_path, videos_root).generic_u8string();
 				u8ident = u8ident.substr(0, u8ident.length() - 4);
 				result.emplace_back(std::move(u8ident));
 			}
@@ -193,10 +193,11 @@ namespace movies {
 #endif
 	}  // namespace
 
-	vector<movie_data> load_from(fs::path const& db_pos) {
-		auto jsons = known_movies(db_pos);
+	vector<movie_data> load_from(fs::path const& db_root,
+	                             fs::path const& videos_root) {
+		auto jsons = known_movies(db_root);
 		auto infos = keys_of(jsons);
-		auto videos = downloaded_movies(db_pos / "videos");
+		auto videos = downloaded_movies(videos_root);
 
 		auto both = split_simple(infos, videos);
 		auto matching = differ{jsons, infos, videos}.calc();
@@ -208,41 +209,42 @@ namespace movies {
 		for (auto const& id : both) {
 			auto it = jsons.find(id);
 			if (it == jsons.end()) {
-				[[unlikely]] movies.push_back(
-				    make_empty(video_ref(db_pos, id), info_ref(db_pos, id)));
+				[[unlikely]] movies.push_back(make_empty(
+				    video_ref(videos_root, id), info_ref(db_root, id)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back(
-			    {std::move(mv), video_ref(db_pos, id), info_ref(db_pos, id)});
+			movies.push_back({std::move(mv), video_ref(videos_root, id),
+			                  info_ref(db_root, id)});
 		}
 
 		for (auto const& diff : matching) {
 			auto it = jsons.find(diff.info);
 			if (it == jsons.end()) {
 				[[unlikely]] movies.push_back(
-				    make_empty(video_ref(db_pos, diff.video),
-				               info_ref(db_pos, diff.info)));
+				    make_empty(video_ref(videos_root, diff.video),
+				               info_ref(db_root, diff.info)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back({std::move(mv), video_ref(db_pos, diff.video),
-			                  info_ref(db_pos, diff.info)});
+			movies.push_back({std::move(mv), video_ref(videos_root, diff.video),
+			                  info_ref(db_root, diff.info)});
 		}
 
 		for (auto const& id : videos)
-			movies.push_back(make_empty(video_ref(db_pos, id), std::nullopt));
+			movies.push_back(
+			    make_empty(video_ref(videos_root, id), std::nullopt));
 
 		for (auto const& id : infos) {
 			auto it = jsons.find(id);
 			if (it == jsons.end()) {
 				[[unlikely]] movies.push_back(
-				    make_empty(std::nullopt, info_ref(db_pos, id)));
+				    make_empty(std::nullopt, info_ref(db_root, id)));
 				continue;
 			}
 			auto& mv = it->second;
 			movies.push_back(
-			    {std::move(mv), std::nullopt, info_ref(db_pos, id)});
+			    {std::move(mv), std::nullopt, info_ref(db_root, id)});
 		}
 
 #ifdef DEBUG_LOADER

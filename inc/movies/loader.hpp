@@ -22,5 +22,5 @@ namespace movies {
 		std::optional<file_ref> info_file{};
 	};
 
-	vector<movie_data> load_from(fs::path const&);
+	vector<movie_data> load_from(fs::path const&, fs::path const&);
 }  // namespace movies

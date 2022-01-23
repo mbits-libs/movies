@@ -25,7 +25,7 @@ namespace movies {
 	struct ref_renames {
 		std::unordered_map<std::u8string, std::u8string> renames{};
 
-		bool load(fs::path const& root, std::u8string_view domain);
+		bool load(fs::path const& db_root, std::u8string_view domain);
 		std::u8string map(std::u8string const&) const noexcept;
 	};
 
@@ -33,7 +33,7 @@ namespace movies {
 		alpha_2_aliases aka{};
 		ref_renames refs{};
 
-		bool load(fs::path const& root, std::u8string_view domain);
+		bool load(fs::path const& db_root, std::u8string_view domain);
 		std::u8string map_aka(std::u8string const& key) const noexcept {
 			return aka.map(key);
 		}

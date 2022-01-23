@@ -112,8 +112,8 @@ namespace movies {
 		void add_tag(std::u8string_view tag);
 		void remove_tag(std::u8string_view tag);
 		bool has_tag(std::u8string_view tag) const noexcept;
-		bool store(fs::path const& root, std::u8string_view dirname);
-		json::conv_result load(fs::path const& root,
+		bool store(fs::path const& db_root, std::u8string_view dirname);
+		json::conv_result load(fs::path const& db_root,
 		                       std::u8string_view dirname,
 		                       alpha_2_aliases const& aka);
 		bool map_countries(alpha_2_aliases const& aka);

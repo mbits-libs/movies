@@ -11,8 +11,8 @@
 namespace movies {
 	using namespace std::literals;
 
-	bool alpha_2_aliases::load(fs::path const& root) {
-		auto const json_filename = root / "db"sv / "iso-alpha-2.json"sv;
+	bool alpha_2_aliases::load(fs::path const& db_root) {
+		auto const json_filename = db_root / "iso-alpha-2.json"sv;
 
 		auto const data = io::contents(json_filename);
 		auto node = json::read_json({data.data(), data.size()});
@@ -37,8 +37,8 @@ namespace movies {
 	}
 
 	std::unordered_map<std::u8string, std::u8string>
-	alpha_2_aliases::load_names(fs::path const& root) {
-		auto const json_filename = root / "db"sv / "iso-alpha-2.json"sv;
+	alpha_2_aliases::load_names(fs::path const& db_root) {
+		auto const json_filename = db_root / "iso-alpha-2.json"sv;
 
 		std::unordered_map<std::u8string, std::u8string> result{};
 
@@ -76,8 +76,8 @@ namespace movies {
 		return country;
 	}
 
-	bool ref_renames::load(fs::path const& root, std::u8string_view domain) {
-		auto const json_filename = root / "db"sv / "refs.json"sv;
+	bool ref_renames::load(fs::path const& db_root, std::u8string_view domain) {
+		auto const json_filename = db_root / "refs.json"sv;
 
 		auto const data = io::contents(json_filename);
 		auto node = json::read_json({data.data(), data.size()});
@@ -99,8 +99,8 @@ namespace movies {
 		return it->second;
 	}
 
-	bool db_info::load(fs::path const& root, std::u8string_view domain) {
-		if (!aka.load(root)) return false;
-		return refs.load(root, domain);
+	bool db_info::load(fs::path const& db_root, std::u8string_view domain) {
+		if (!aka.load(db_root)) return false;
+		return refs.load(db_root, domain);
 	}
 }  // namespace movies

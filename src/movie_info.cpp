@@ -885,8 +885,9 @@ namespace movies {
 		return result;
 	}
 
-	bool movie_info::store(fs::path const& root, std::u8string_view dirname) {
-		auto const json_filename = root / "db"sv / "nfo"sv / make_json(dirname);
+	bool movie_info::store(fs::path const& db_root,
+	                       std::u8string_view dirname) {
+		auto const json_filename = db_root / "nfo"sv / make_json(dirname);
 
 		std::error_code ec{};
 
@@ -903,10 +904,10 @@ namespace movies {
 		return true;
 	}
 
-	json::conv_result movie_info::load(fs::path const& root,
+	json::conv_result movie_info::load(fs::path const& db_root,
 	                                   std::u8string_view dirname,
 	                                   alpha_2_aliases const& aka) {
-		auto const json_filename = root / "db"sv / "nfo"sv / make_json(dirname);
+		auto const json_filename = db_root / "nfo"sv / make_json(dirname);
 
 		auto const data = io::contents(json_filename);
 		auto node = json::read_json({data.data(), data.size()});
@@ -935,13 +936,13 @@ namespace movies {
 	}
 
 #ifdef MOVIES_HAS_NAVIGATOR
-	bool movie_info::offline_images(fs::path const& root,
+	bool movie_info::offline_images(fs::path const& db_root,
 	                                nav::navigator& nav,
 	                                uri const& referrer,
 	                                std::u8string_view dirname) {
 		auto mapping = rebase_all(image, dirname, uri::make_base(referrer));
 
-		auto const img_dir = root / "db" / "img"sv;
+		auto const img_dir = db_root / "img"sv;
 
 		std::error_code ec{};
 		fs::create_directories(img_dir / dirname, ec);
