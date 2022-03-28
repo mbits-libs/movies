@@ -14,10 +14,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-if (NOT TARGET json)
-add_subdirectory(external)
-endif()
-
 list(APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR})
 
 if (NOT TARGET fmt::fmt)
@@ -25,6 +21,9 @@ if (NOT TARGET fmt::fmt)
 endif()
 if (NOT TARGET date::date)
     find_package(date REQUIRED CONFIG)
+endif()
+if (NOT TARGET mbits-json::json)
+    find_package(mbits-json REQUIRED CONFIG)
 endif()
 
 ##################################################################
@@ -60,7 +59,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${MOVIES_SRCS})
 
 add_library(movies STATIC ${MOVIES_SRCS})
 target_include_directories(movies PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inc")
-target_link_libraries(movies PUBLIC json io fmt::fmt date::date)
+target_link_libraries(movies PUBLIC mbits-json::json io fmt::fmt date::date)
 
 if (TARGET nav)
     target_link_libraries(movies PUBLIC nav)
