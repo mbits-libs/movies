@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 project(movies LANGUAGES CXX VERSION 0.1.0)
 
+set(MOVIES_INSTALL OFF CACHE BOOL "Install the library")
+
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(TARGETS)
 
@@ -64,4 +66,14 @@ target_link_libraries(movies PUBLIC mbits-json::json io fmt::fmt date::date)
 if (TARGET nav)
     target_link_libraries(movies PUBLIC nav)
     target_compile_definitions(movies PUBLIC MOVIES_HAS_NAVIGATOR)
+endif()
+
+##################################################################
+##  INSTALL
+##################################################################
+
+if (MOVIES_INSTALL)
+  install(TARGETS movies io)
+  install(DIRECTORY inc/movies DESTINATION include)
+  install(DIRECTORY inc/io DESTINATION include)
 endif()
