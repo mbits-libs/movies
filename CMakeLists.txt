@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.19)
-project(movies LANGUAGES CXX VERSION 0.1.0)
+project(movies LANGUAGES CXX VERSION 0.1.1)
 
 set(MOVIES_INSTALL OFF CACHE BOOL "Install the library")
 
+set(CONAN_CMAKE_SILENT_OUTPUT ON)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(TARGETS)
 

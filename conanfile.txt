@@ -1,5 +1,5 @@
 [requires]
-fmt/8.0.1
+fmt/8.1.1
 date/3.0.1
 mbits-json/0.1.1 
 
