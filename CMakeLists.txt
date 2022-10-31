@@ -2,10 +2,16 @@ cmake_minimum_required(VERSION 3.19)
 project(movies LANGUAGES CXX VERSION 0.1.1)
 
 set(MOVIES_INSTALL OFF CACHE BOOL "Install the library")
+set(MOVIES_IGNORE_CONAN OFF CACHE BOOL "Ignore conanbuildinfo")
 
-set(CONAN_CMAKE_SILENT_OUTPUT ON)
-include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(TARGETS)
+if (NOT MOVIES_IGNORE_CONAN)
+    if (EXISTS ${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+        include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+        conan_basic_setup(TARGETS)
+    elseif(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        message(FATAL_ERROR "Missing file\n  ${CMAKE_BINARY_DIR}/conanbuildinfo.cmake\nRun `conan install .. --build missing` before cmake")
+    endif()
+endif()
 
 if (MSVC)
     # https://github.com/microsoft/STL/issues/1814
@@ -25,8 +31,13 @@ endif()
 if (NOT TARGET date::date)
     find_package(date REQUIRED CONFIG)
 endif()
-if (NOT TARGET mbits-json::json)
+if (TARGET json)
+    set(JSON_TGT json)
+elseif(TARGET mbits-json::json)
+    set(JSON_TGT mbits-json::json)
+elseif (NOT TARGET mbits-json::json)
     find_package(mbits-json REQUIRED CONFIG)
+    set(JSON_TGT mbits-json::json)
 endif()
 
 ##################################################################
@@ -62,7 +73,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${MOVIES_SRCS})
 
 add_library(movies STATIC ${MOVIES_SRCS})
 target_include_directories(movies PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inc")
-target_link_libraries(movies PUBLIC mbits-json::json io fmt::fmt date::date)
+target_link_libraries(movies PUBLIC ${JSON_TGT} io fmt::fmt date::date)
 
 if (TARGET nav)
     target_link_libraries(movies PUBLIC nav)
