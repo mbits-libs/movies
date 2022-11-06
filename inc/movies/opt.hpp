@@ -44,42 +44,45 @@ void operator>>(std::optional<In> const& in, Pred pred) {
 	pred(*in);
 }
 
+struct defval_t {};
+static defval_t nothing{};
+
 template <typename In, typename Def>
 auto operator||(std::optional<In> const& in, Def&& def) {
 	return in.value_or(std::forward<Def>(def));
 }
 
 template <typename In>
+auto operator||(std::optional<In> const& in, defval_t) {
+	return in.value_or(In{});
+}
+
+template <typename In>
 std::optional<In> const& operator||(std::optional<In> const& in,
                                     std::optional<In> const& def) {
-	if (in) return in;
-	return def;
+	return in ? in : def;
 }
 
 template <typename In>
 std::optional<In> const& operator||(std::optional<In> const& in,
                                     std::optional<In>& def) {
-	if (in) return in;
-	return def;
+	return in ? in : def;
 }
 
 template <typename In>
 std::optional<In> const& operator||(std::optional<In>& in,
                                     std::optional<In> const& def) {
-	if (in) return in;
-	return def;
+	return in ? in : def;
 }
 
 template <typename In>
 std::optional<In> const& operator||(std::optional<In>& in,
                                     std::optional<In>& def) {
-	if (in) return in;
-	return def;
+	return in ? in : def;
 }
 
 template <typename In, Optional Def>
 auto operator||(std::optional<In> const& in, Def const& def)
     -> std::common_type_t<std::optional<In>, Def> {
-	if (in) return in;
-	return def;
+	return in ? in : def;
 }
