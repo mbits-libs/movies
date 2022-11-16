@@ -13,6 +13,8 @@ namespace movies {
 	struct file_ref {
 		string id;
 		fs::file_time_type mtime;
+
+		bool operator==(file_ref const&) const noexcept = default;
 	};
 
 	struct movie_data {
@@ -20,7 +22,11 @@ namespace movies {
 
 		std::optional<file_ref> video_file{};
 		std::optional<file_ref> info_file{};
+
+		bool operator==(movie_data const&) const noexcept = default;
 	};
 
-	vector<movie_data> load_from(fs::path const&, fs::path const&);
+	vector<movie_data> load_from(fs::path const&,
+	                             fs::path const&,
+	                             bool store_updates);
 }  // namespace movies

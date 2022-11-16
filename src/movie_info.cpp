@@ -100,7 +100,8 @@ namespace movies {
 		}
 
 		json::conv_result array_from_json(json::array const* input,
-		                                  std::vector<person_info>& output) {
+		                                  std::vector<person_info>& output,
+		                                  std::string& dbg) {
 			if (!input) return json::conv_result::ok;
 
 			output.clear();
@@ -110,7 +111,7 @@ namespace movies {
 			for (auto const& node : *input) {
 				output.emplace_back();
 				person_info info{};
-				auto const res = output.back().from_json(node);
+				auto const res = output.back().from_json(node, dbg);
 				if (!is_ok(res)) result = res;
 				if (result == json::conv_result::failed) break;
 			}
@@ -118,7 +119,8 @@ namespace movies {
 		}
 
 		json::conv_result array_from_json(json::array const* input,
-		                                  std::vector<std::u8string>& output) {
+		                                  std::vector<std::u8string>& output,
+		                                  std::string&) {
 			if (!input) return json::conv_result::ok;
 
 			output.clear();
@@ -135,19 +137,24 @@ namespace movies {
 
 		json::conv_result array_from_json(
 		    std::tuple<std::u8string const*, json::array const*> const& input,
-		    std::vector<std::u8string>& output) {
+		    std::vector<std::u8string>& output,
+		    std::string& dbg) {
 			auto const& str = std::get<0>(input);
 			if (str) {
 				output.clear();
-				if (str->empty()) return json::conv_result::updated;
+				if (str->empty()) {
+					dbg.append("\n- Empty string could be a non-array"sv);
+					return json::conv_result::updated;
+				}
 				output.push_back(*str);
 				return json::conv_result::ok;
 			}
-			return array_from_json(std::get<1>(input), output);
+			return array_from_json(std::get<1>(input), output, dbg);
 		}
 
 		json::conv_result map_from_json(json::map const* input,
-		                                people_map& output) {
+		                                people_map& output,
+		                                std::string&) {
 			if (!input) return json::conv_result::ok;
 
 			output.clear();
@@ -451,12 +458,16 @@ namespace movies {
 #define JSON_CAST(field_name, type) \
 	auto json_##field_name = cast_from_json<type>(data, u8## #field_name##sv)
 
-#define JSON_MAP_COPY(field_name)                                          \
-	{                                                                      \
-		if (auto const res = map_from_json(json_##field_name, field_name); \
-		    res != json::conv_result::ok)                                  \
-			result = res;                                                  \
-		if (result == json::conv_result::failed) return result;            \
+#define JSON_MAP_COPY(field_name)                                  \
+	{                                                              \
+		if (auto const res =                                       \
+		        map_from_json(json_##field_name, field_name, dbg); \
+		    res != json::conv_result::ok) {                        \
+			result = res;                                          \
+			if (res == json::conv_result::updated)                 \
+				dbg.append(" (" #field_name ")"sv);                \
+		}                                                          \
+		if (result == json::conv_result::failed) return result;    \
 	}
 
 #define MERGE(field_name)                      \
@@ -537,7 +548,8 @@ namespace movies {
 	}
 
 	json::conv_result title_info::from_json(std::u8string const* title,
-	                                        json::map const* map) {
+	                                        json::map const* map,
+	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
 		if (title) {
 			local = *title;
@@ -548,11 +560,11 @@ namespace movies {
 			LOAD(orig);
 			LOAD(sort);
 		} else {
-			fixup();
+			fixup(dbg);
 			return json::conv_result::opt;
 		}
 
-		return fixup() ? json::conv_result::updated : result;
+		return fixup(dbg) ? json::conv_result::updated : result;
 	}
 
 	json::conv_result title_info::merge(title_info const& new_data,
@@ -572,46 +584,54 @@ namespace movies {
 			if (!local) local = new_data.local;
 		}
 
-		fixup();
+		std::string ignore{};
+		fixup(ignore);
 
 		return CHANGED(local) || CHANGED(orig) || CHANGED(sort)
 		           ? json::conv_result::updated
 		           : json::conv_result::ok;
 	}
 
-	bool title_info::fixup() {
+	bool title_info::fixup(std::string& dbg) {
 		bool changed = false;
 
 		if (local && local->empty()) {
 			local = std::nullopt;
+			dbg.append("\n- Empty local title string found"sv);
 			changed = true;
 		}
 		if (orig && orig->empty()) {
 			orig = std::nullopt;
+			dbg.append("\n- Empty orig title string found"sv);
 			changed = true;
 		}
 		if (sort && sort->empty()) {
 			sort = std::nullopt;
+			dbg.append("\n- Empty sort title string found"sv);
 			changed = true;
 		}
 
 		if (local && orig && *local == *orig) {
 			orig = std::nullopt;
+			dbg.append("\n- Duplicate orig title string found"sv);
 			changed = true;
 		}
 
 		if (local && sort && *local == *sort) {
 			sort = std::nullopt;
+			dbg.append("\n- Duplicate sort title string found"sv);
 			changed = true;
 		}
 
 		if (!local && sort) {
 			std::swap(local, sort);
+			dbg.append("\n- Found sort title, but not local title"sv);
 			changed = true;
 		}
 
 		if (!local && orig) {
 			std::swap(local, orig);
+			dbg.append("\n- Found orig title, but not local title"sv);
 			changed = true;
 		}
 
@@ -623,7 +643,8 @@ namespace movies {
 		return json::array{key, *contribution};
 	}
 
-	json::conv_result person_info::from_json(json::node const& data) {
+	json::conv_result person_info::from_json(json::node const& data,
+	                                         std::string&) {
 		auto str = cast<std::u8string>(data);
 		auto arr = cast<json::array>(data);
 
@@ -658,7 +679,8 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result crew_info::from_json(json::map const& data) {
+	json::conv_result crew_info::from_json(json::map const& data,
+	                                       std::string& dbg) {
 		auto result = json::conv_result::ok;
 		LOAD(directors);
 		LOAD(writers);
@@ -720,7 +742,8 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result poster_info::from_json(json::map const& data) {
+	json::conv_result poster_info::from_json(json::map const& data,
+	                                         std::string& dbg) {
 		auto result = json::conv_result::ok;
 		LOAD(small);
 		LOAD(large);
@@ -744,9 +767,10 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result image_info::from_json(json::map const& data) {
+	json::conv_result image_info::from_json(json::map const& data,
+	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
-		LOAD_EX(json::load(data, NAMED(highlight)));
+		LOAD_EX(json::load(data, NAMED(highlight), dbg));
 		LOAD(poster);
 		LOAD(gallery);
 		return result;
@@ -767,7 +791,8 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result dates_info::from_json(json::map const& data) {
+	json::conv_result dates_info::from_json(json::map const& data,
+	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
 		LOAD(published);
 		LOAD(stream);
@@ -821,7 +846,8 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result movie_info::from_json(json::map const& data) {
+	json::conv_result movie_info::from_json(json::map const& data,
+	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
 		JSON_CAST(people, json::map);
 
@@ -906,16 +932,20 @@ namespace movies {
 
 	json::conv_result movie_info::load(fs::path const& db_root,
 	                                   std::u8string_view dirname,
-	                                   alpha_2_aliases const& aka) {
+	                                   alpha_2_aliases const& aka,
+	                                   std::string& dbg) {
 		auto const json_filename = db_root / "nfo"sv / make_json(dirname);
 
 		auto const data = io::contents(json_filename);
 		auto node = json::read_json({data.data(), data.size()});
 
 		auto result = json::conv_result::ok;
-		LOAD_EX(::json::load(node, *this));
+		LOAD_EX(::json::load(node, *this, dbg));
 
-		if (map_countries(aka)) result = json::conv_result::updated;
+		if (map_countries(aka)) {
+			result = json::conv_result::updated;
+			dbg.append("\n- Country list updated to ISO alpha2"sv);
+		}
 		return result;
 	}
 

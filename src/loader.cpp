@@ -42,7 +42,7 @@ namespace movies {
 			return get_ref(videos_root / (id + u8".mp4"), id);
 		}
 
-		map<string, movie_info> known_movies(fs::path const& db_root) {
+		map<string, movie_info> known_movies(fs::path const& db_root, bool store_updates) {
 			map<string, movie_info> result{};
 			alpha_2_aliases aka{};
 			aka.load(db_root);
@@ -61,12 +61,21 @@ namespace movies {
 				u8ident = u8ident.substr(0, u8ident.length() - 5);
 
 				movie_info info{};
-				auto const load_result = info.load(db_root, u8ident, aka);
+				std::string debug {};
+				auto const load_result = info.load(db_root, u8ident, aka, debug);
 				if (load_result == json::conv_result::failed) continue;
 				if (load_result == json::conv_result::updated) {
-					info.store(db_root, u8ident);
-					fputc('.', stdout);
-					fflush(stdout);
+					if (store_updates) {
+						info.store(db_root, u8ident);
+						fputc('.', stdout);
+						fflush(stdout);
+					}
+					else {
+						fprintf(stdout, "%.*s:%s\n",
+						        static_cast<int>(u8ident.size()),
+						        reinterpret_cast<char const*>(u8ident.data()),
+						        debug.c_str() ? debug.c_str() : "<null>");
+					}
 				}
 				result.insert({u8ident, std::move(info)});
 			}
@@ -194,8 +203,9 @@ namespace movies {
 	}  // namespace
 
 	vector<movie_data> load_from(fs::path const& db_root,
-	                             fs::path const& videos_root) {
-		auto jsons = known_movies(db_root);
+	                             fs::path const& videos_root,
+	                             bool store_updates) {
+		auto jsons = known_movies(db_root, store_updates);
 		auto infos = keys_of(jsons);
 		auto videos = downloaded_movies(videos_root);
 

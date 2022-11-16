@@ -28,11 +28,14 @@ namespace movies {
 		std::optional<std::u8string> orig;
 		std::optional<std::u8string> sort;
 
+		bool operator==(title_info const&) const noexcept = default;
+
 		json::node to_json() const;
 		json::conv_result from_json(std::u8string const* title,
-		                            json::map const* data);
+		                            json::map const* data,
+		                            std::string& dbg);
 		json::conv_result merge(title_info const&, prefer_title);
-		bool fixup();
+		bool fixup(std::string& dbg);
 	};
 
 	struct person_info {
@@ -42,7 +45,7 @@ namespace movies {
 		auto operator<=>(person_info const&) const = default;
 
 		json::node to_json() const;
-		json::conv_result from_json(json::node const& data);
+		json::conv_result from_json(json::node const& data, std::string& dbg);
 	};
 
 	struct crew_info {
@@ -51,8 +54,10 @@ namespace movies {
 		people_list writers;
 		people_list cast;
 
+		bool operator==(crew_info const&) const noexcept = default;
+
 		json::node to_json() const;
-		json::conv_result from_json(json::map const& data);
+		json::conv_result from_json(json::map const& data, std::string& dbg);
 		json::conv_result merge(crew_info const& new_data,
 		                        people_map& people,
 		                        people_map const& new_people);
@@ -62,8 +67,11 @@ namespace movies {
 		std::optional<std::u8string> small;
 		std::optional<std::u8string> large;
 		std::optional<std::u8string> normal;
+
+		bool operator==(poster_info const&) const noexcept = default;
+
 		json::node to_json() const;
-		json::conv_result from_json(json::map const& data);
+		json::conv_result from_json(json::map const& data, std::string& dbg);
 		json::conv_result merge(poster_info const&);
 	};
 
@@ -72,8 +80,10 @@ namespace movies {
 		poster_info poster;
 		std::vector<std::u8string> gallery;
 
+		bool operator==(image_info const&) const noexcept = default;
+
 		json::node to_json() const;
-		json::conv_result from_json(json::map const& data);
+		json::conv_result from_json(json::map const& data, std::string& dbg);
 		json::conv_result merge(image_info const&);
 	};
 
@@ -83,8 +93,10 @@ namespace movies {
 		opt_seconds stream{};
 		opt_seconds poster{};
 
+		bool operator==(dates_info const&) const noexcept = default;
+
 		json::node to_json() const;
-		json::conv_result from_json(json::map const& data);
+		json::conv_result from_json(json::map const& data, std::string& dbg);
 		json::conv_result merge(dates_info const&);
 
 		static opt_seconds from_http_date(std::string const&);
@@ -106,8 +118,10 @@ namespace movies {
 		dates_info dates;
 		std::optional<unsigned> year{}, runtime{}, rating{};
 
+		bool operator==(movie_info const&) const noexcept = default;
+
 		json::map to_json() const;
-		json::conv_result from_json(json::map const& data);
+		json::conv_result from_json(json::map const& data, std::string& dbg);
 		json::conv_result merge(movie_info const&, prefer_title);
 		void add_tag(std::u8string_view tag);
 		void remove_tag(std::u8string_view tag);
@@ -115,7 +129,8 @@ namespace movies {
 		bool store(fs::path const& db_root, std::u8string_view dirname);
 		json::conv_result load(fs::path const& db_root,
 		                       std::u8string_view dirname,
-		                       alpha_2_aliases const& aka);
+		                       alpha_2_aliases const& aka,
+		                       std::string& dbg);
 		bool map_countries(alpha_2_aliases const& aka);
 
 #ifdef MOVIES_HAS_NAVIGATOR
