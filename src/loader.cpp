@@ -165,9 +165,9 @@ namespace movies {
 		                      std::optional<file_ref> const& info_file) {
 			movie_data result{{}, video_file, info_file};
 			if (video_file)
-				result.info.title.local = make_title(video_file->id);
+				result.title.local = make_title(video_file->id);
 			else if (info_file)
-				result.info.title.local = make_title(info_file->id);
+				result.title.local = make_title(info_file->id);
 
 			return result;
 		}

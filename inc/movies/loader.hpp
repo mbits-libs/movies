@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include <filesystem>
 #include "fwd.hpp"
 #include "movie_info.hpp"
-#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -17,9 +17,7 @@ namespace movies {
 		bool operator==(file_ref const&) const noexcept = default;
 	};
 
-	struct movie_data {
-		movie_info info{};
-
+	struct movie_data : movie_info {
 		std::optional<file_ref> video_file{};
 		std::optional<file_ref> info_file{};
 
