@@ -32,8 +32,10 @@ namespace movies {
 				}
 
 				std::vector<std::u8string> titles{};
-				if (mv.title.local) titles.push_back(*mv.title.local);
-				if (mv.title.orig) titles.push_back(*mv.title.orig);
+				titles.reserve(mv.title.items.size());
+				for (auto const& [_, title] : mv.title.items) {
+					titles.push_back(title.text);
+				}
 				for (auto& s : titles) {
 					for (auto& c : s) {
 						c = std::tolower(static_cast<unsigned char>(c));

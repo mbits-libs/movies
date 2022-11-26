@@ -23,17 +23,51 @@ namespace movies {
 	enum class prefer_title { mine, theirs };
 	using people_map = std::map<std::u8string, std::u8string>;
 
+	template <typename Value>
+	struct translatable {
+		std::map<std::string, Value> items{};
+
+		bool operator==(translatable const&) const noexcept = default;
+
+		auto begin() const { return items.begin(); }
+		auto end() const { return items.end(); }
+		auto begin() { return items.begin(); }
+		auto end() { return items.end(); }
+
+		auto find(std::string_view lang) const {
+			while (!lang.empty()) {
+				auto it = items.find({lang.data(), lang.size()});
+				if (it != items.end()) return it;
+
+				auto pos = lang.rfind('-');
+				if (pos == std::string_view::npos) pos = 0;
+				lang = lang.substr(0, pos);
+			}
+			return items.find({});
+		}
+
+		template <typename Op>
+		auto map(Op op) -> translatable<
+		    std::remove_cvref_t<decltype(op(std::declval<Value>()))>> {
+			translatable<
+			    std::remove_cvref_t<decltype(op(std::declval<Value>()))>>
+			    result{};
+			for (auto const& [key, value] : items) {
+				result.items[key] = op(value);
+			}
+			return result;
+		}
+	};
+
 	struct title_info {
-		std::optional<std::u8string> local;
-		std::optional<std::u8string> orig;
+		std::u8string text;
 		std::optional<std::u8string> sort;
+		bool original{false};
 
 		bool operator==(title_info const&) const noexcept = default;
 
 		json::node to_json() const;
-		json::conv_result from_json(std::u8string const* title,
-		                            json::map const* data,
-		                            std::string& dbg);
+		json::conv_result from_json(json::node const& data, std::string& dbg);
 		json::conv_result merge(title_info const&, prefer_title);
 		bool fixup(std::string& dbg);
 	};
@@ -104,7 +138,7 @@ namespace movies {
 
 	struct movie_info {
 		std::vector<std::u8string> refs;
-		title_info title;
+		translatable<title_info> title;
 		std::vector<std::u8string> genres;
 		std::vector<std::u8string> countries;
 		std::vector<std::u8string> age;
@@ -113,7 +147,8 @@ namespace movies {
 
 		crew_info crew;
 		people_map people;
-		std::optional<std::u8string> summary;
+		translatable<std::u8string> tagline;
+		translatable<std::u8string> summary;
 		image_info image;
 		dates_info dates;
 		std::optional<unsigned> year{}, runtime{}, rating{};

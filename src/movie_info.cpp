@@ -98,6 +98,97 @@ namespace movies {
 		std::chrono::sys_seconds as_seconds(long long value) {
 			return std::chrono::sys_seconds{std::chrono::seconds{value}};
 		}
+#define LOAD_PREFIXED_ITEM()                                  \
+	ValueType item{};                                         \
+	auto const ret = json::load(data, key, item, dbg);        \
+	if (!is_ok(ret)) result = ret;                            \
+	if (result == ::json::conv_result::failed) return result; \
+	if (ret == ::json::conv_result::opt) continue;
+
+		std::string_view as_sv(std::u8string_view view) {
+			return {reinterpret_cast<char const*>(view.data()), view.size()};
+		}
+
+		std::u8string_view as_s8v(std::string_view view) {
+			return {reinterpret_cast<char8_t const*>(view.data()), view.size()};
+		}
+
+		template <json::LoadableJsonValue ValueType>
+		inline json::conv_result load_prefixed(json::map const& data,
+		                                       std::u8string_view prefix,
+		                                       translatable<ValueType>& value,
+		                                       std::string& dbg) {
+			auto result = json::conv_result::ok;
+			for (auto const& [key, _] : data) {
+				if (!key.starts_with(prefix)) continue;
+				if (key.length() == prefix.length()) {
+					LOAD_PREFIXED_ITEM();
+					value.items[{}] = std::move(item);
+				} else if (key[prefix.length()] == u8':') {
+					LOAD_PREFIXED_ITEM();
+					auto view = as_sv(key).substr(prefix.length() + 1);
+					value.items[{view.data(), view.size()}] = std::move(item);
+				}
+			}
+			return result;
+		}
+
+		json::conv_result merge_one_prefixed(std::u8string& prev,
+		                                     std::u8string const& next) {
+			prev = next;
+			return json::conv_result::ok;
+		}
+
+		json::conv_result merge_one_prefixed(title_info& prev,
+		                                     title_info const& next,
+		                                     prefer_title which_title) {
+			return prev.merge(next, which_title);
+		}
+
+		template <json::JsonStorableValue ValueType, typename... AdditionalArgs>
+		json::conv_result merge_prefixed(
+		    translatable<ValueType>& old_data,
+		    translatable<ValueType> const& new_data,
+		    AdditionalArgs... args) {
+			auto result = json::conv_result::ok;
+			for (auto& [key, prev] : old_data) {
+				auto it = new_data.find(key);
+				if (it == new_data.end()) continue;
+				auto const res = merge_one_prefixed(prev, it->second, args...);
+				if (!is_ok(res)) result = res;
+				if (result == json::conv_result::failed) return result;
+			}
+
+			for (auto const& [key, next] : new_data) {
+				auto it = old_data.items.lower_bound(key);
+				if (it != old_data.end() && it->first == key) continue;
+				result = json::conv_result::updated;
+				old_data.items.insert(it, {key, next});
+			}
+
+			return result;
+		}
+
+		template <json::JsonStorableValue ValueType>
+		inline json::conv_result store_prefixed(
+		    json::map& data,
+		    std::u8string_view prefix,
+		    translatable<ValueType> const& value) {
+			auto result = json::conv_result::ok;
+			for (auto const& [key, item] : value.items) {
+				if (key.empty()) {
+					json::store(data, prefix, item);
+					continue;
+				}
+				std::u8string full{};
+				full.reserve(prefix.length() + key.length() + 1);
+				full.append(prefix);
+				full.push_back(':');
+				full.append(as_s8v(key));
+				json::store(data, full, item);
+			}
+			return result;
+		}
 
 		json::conv_result array_from_json(json::array const* input,
 		                                  std::vector<person_info>& output,
@@ -470,6 +561,11 @@ namespace movies {
 		if (result == json::conv_result::failed) return result;    \
 	}
 
+#define LOAD_PREFIXED(field_name) \
+	LOAD_EX(load_prefixed(data, NAMED_SV(field_name), dbg))
+
+#define STORE_PREFIXED(field_name) store_prefixed(result, NAMED_SV(field_name))
+
 #define MERGE(field_name)                      \
 	auto const prev_##field_name = field_name; \
 	field_name = new_data.field_name
@@ -517,6 +613,13 @@ namespace movies {
 		if (sub_result != json::conv_result::ok) result = sub_result; \
 		if (result == json::conv_result::failed) break;               \
 	}
+#define MERGE_PREFIXED(field_name, ...)                                   \
+	{                                                                     \
+		auto const sub_result =                                           \
+		    merge_prefixed(field_name, new_data.field_name, __VA_ARGS__); \
+		if (sub_result != json::conv_result::ok) result = sub_result;     \
+		if (result == json::conv_result::failed) break;                   \
+	}
 #else
 #define MERGE_OBJ(field_name, ...)                                            \
 	{                                                                         \
@@ -524,6 +627,13 @@ namespace movies {
 		    field_name.merge(new_data.field_name __VA_OPT__(, ) __VA_ARGS__); \
 		if (sub_result != json::conv_result::ok) result = sub_result;         \
 		if (result == json::conv_result::failed) break;                       \
+	}
+#define MERGE_PREFIXED(field_name, ...)                                  \
+	{                                                                    \
+		auto const sub_result = merge_prefixed(                          \
+		    field_name, new_data.field_name __VA_OPT__(, ) __VA_ARGS__); \
+		if (sub_result != json::conv_result::ok) result = sub_result;    \
+		if (result == json::conv_result::failed) break;                  \
 	}
 #endif
 
@@ -534,12 +644,39 @@ namespace movies {
 		if (result == json::conv_result::failed) break;                        \
 	}
 
+#define MERGE_MAP(field_name)                                                \
+	{                                                                        \
+		auto const sub_result = merge_maps(field_name, new_data.field_name); \
+		if (sub_result != json::conv_result::ok) result = sub_result;        \
+		if (result == json::conv_result::failed) break;                      \
+	}
+
+	struct old_title_info {
+		std::optional<std::u8string> local;
+		std::optional<std::u8string> orig;
+		std::optional<std::u8string> sort;
+
+		bool operator==(old_title_info const&) const noexcept = default;
+
+		json::conv_result from_json(json::map const& data, std::string& dbg);
+	};
+
+	json::conv_result old_title_info::from_json(json::map const& data,
+	                                            std::string& dbg) {
+		auto result = json::conv_result::ok;
+		LOAD(local);
+		LOAD(orig);
+		LOAD(sort);
+
+		return result;
+	}
+
 	json::node title_info::to_json() const {
 		std::vector<std::pair<json::string, json::node>> values;
 		values.reserve(3);
-		if (local) values.push_back({u8"local", *local});
-		if (orig) values.push_back({u8"orig", *orig});
+		values.push_back({u8"text", text});
 		if (sort) values.push_back({u8"sort", *sort});
+		if (original) values.push_back({u8"original", true});
 
 		if (values.empty()) return {};
 		if (values.size() == 1) return std::move(values.front().second);
@@ -547,20 +684,31 @@ namespace movies {
 		                 std::make_move_iterator(values.end())};
 	}
 
-	json::conv_result title_info::from_json(std::u8string const* title,
-	                                        json::map const* map,
+	json::conv_result title_info::from_json(json::node const& data,
 	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
-		if (title) {
-			local = *title;
-			orig = sort = std::nullopt;
+		auto json_text = cast<json::string>(data);
+		auto map = cast<json::map>(data);
+
+		if (json_text) {
+			text = *json_text;
+			sort = std::nullopt;
+			original = false;
 		} else if (map) {
 			auto const& data = *map;
-			LOAD(local);
-			LOAD(orig);
+			auto local = cast<json::string>(data, u8"local"s);
+			auto orig = cast<json::string>(data, u8"orig"s);
+			if (local || orig) {
+				return json::conv_result::opt;
+			}
+			std::optional<std::u8string> text;
+			LOAD(text);
 			LOAD(sort);
+			LOAD(original);
+			if (!text)
+				return json::conv_result::opt;
+			this->text = *text;
 		} else {
-			fixup(dbg);
 			return json::conv_result::opt;
 		}
 
@@ -569,25 +717,23 @@ namespace movies {
 
 	json::conv_result title_info::merge(title_info const& new_data,
 	                                    prefer_title which_title) {
-		auto const prev_orig = orig;
-		auto const prev_local = local;
+		auto const prev_text = text;
 		auto const prev_sort = sort;
+		auto const prev_original = original;
 
 		if (which_title == prefer_title::theirs) {
-			local = new_data.local || local;
-			orig = new_data.orig || new_data.local || orig || local;
-			sort = new_data.sort || new_data.local || new_data.orig || sort ||
-			       local || orig;
+			text = new_data.text;
+			sort = new_data.sort || sort;
+			original = new_data.original;
 		} else {
-			if (!orig) orig = new_data.orig || new_data.local;
-			if (!sort) sort = new_data.sort || new_data.local || new_data.orig;
-			if (!local) local = new_data.local;
+			if (text.empty()) text = new_data.text;
+			if (!sort) sort = new_data.sort;
 		}
 
 		std::string ignore{};
 		fixup(ignore);
 
-		return CHANGED(local) || CHANGED(orig) || CHANGED(sort)
+		return CHANGED(text) || CHANGED(sort) || CHANGED(original)
 		           ? json::conv_result::updated
 		           : json::conv_result::ok;
 	}
@@ -595,43 +741,12 @@ namespace movies {
 	bool title_info::fixup(std::string& dbg) {
 		bool changed = false;
 
-		if (local && local->empty()) {
-			local = std::nullopt;
-			dbg.append("\n- Empty local title string found"sv);
-			changed = true;
-		}
-		if (orig && orig->empty()) {
-			orig = std::nullopt;
-			dbg.append("\n- Empty orig title string found"sv);
-			changed = true;
-		}
+		if (text.empty() && sort) text = *sort;
+		if (sort && text == *sort) sort = std::nullopt;
+
 		if (sort && sort->empty()) {
 			sort = std::nullopt;
 			dbg.append("\n- Empty sort title string found"sv);
-			changed = true;
-		}
-
-		if (local && orig && *local == *orig) {
-			orig = std::nullopt;
-			dbg.append("\n- Duplicate orig title string found"sv);
-			changed = true;
-		}
-
-		if (local && sort && *local == *sort) {
-			sort = std::nullopt;
-			dbg.append("\n- Duplicate sort title string found"sv);
-			changed = true;
-		}
-
-		if (!local && sort) {
-			std::swap(local, sort);
-			dbg.append("\n- Found sort title, but not local title"sv);
-			changed = true;
-		}
-
-		if (!local && orig) {
-			std::swap(local, orig);
-			dbg.append("\n- Found orig title, but not local title"sv);
 			changed = true;
 		}
 
@@ -826,10 +941,27 @@ namespace movies {
 		return std::nullopt;
 	}
 
+	void store_tr_strings(
+	    json::map& dst,
+	    std::u8string_view const& prefix,
+	    std::map<std::u8string, std::u8string> const& values) {
+		for (auto const& [key, value] : values) {
+			if (key.empty()) {
+				dst[{prefix.data(), prefix.size()}] = value;
+			} else {
+				std::u8string full{};
+				full.reserve(prefix.length() + key.length() + 1);
+				full.append(prefix);
+				full.push_back(':');
+				full.append(key);
+				dst[full] = value;
+			}
+		}
+	}
+
 	json::map movie_info::to_json() const {
 		json::map result{};
 		STORE(refs);
-		STORE(title);
 		STORE(genres);
 		STORE(countries);
 		STORE_OR_VALUE(age);
@@ -837,7 +969,9 @@ namespace movies {
 		STORE(episodes);
 		STORE(crew);
 		STORE(people);
-		STORE(summary);
+		STORE_PREFIXED(title);
+		STORE_PREFIXED(tagline);
+		STORE_PREFIXED(summary);
 		STORE(image);
 		STORE(dates);
 		STORE(year);
@@ -846,13 +980,54 @@ namespace movies {
 		return result;
 	}
 
+	json::conv_result load_tr_strings(
+	    json::map const& data,
+	    std::u8string_view prefix,
+	    std::map<std::u8string, std::u8string>& dst,
+	    std::string&) {
+		for (auto const& [key, value] : data) {
+			if (key == prefix) {
+				auto str = cast<json::string>(value);
+				if (!str) return json::conv_result::failed;
+				dst[{}] = *str;
+				continue;
+			}
+			if (key.starts_with(prefix) && key[prefix.length()] == u8':') {
+				auto str = cast<json::string>(value);
+				if (!str) return json::conv_result::failed;
+				dst[key.substr(prefix.length() + 1)] = *str;
+				continue;
+			}
+		}
+		return json::conv_result::ok;
+	}
+
 	json::conv_result movie_info::from_json(json::map const& data,
 	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
 		JSON_CAST(people, json::map);
 
+		do {
+			old_title_info value{};
+			auto const ret = json::load(data, u8"title"s, value, dbg);
+			if (ret == ::json::conv_result::failed) return ret;
+			if (!!value.local || !!value.orig) {
+				// this is old-style JSON.
+				if (!value.local && value.orig) value.local = *value.orig;
+				auto& def = title.items[{}];
+				def.text = *value.local;
+				def.sort = value.sort;
+				if (value.orig) {
+					auto& def = title.items["<unk>"];
+					def.text = *value.orig;
+					def.sort = value.sort;
+					def.original = true;
+				}
+			}
+		} while (0);
+
 		LOAD(refs);
-		LOAD_MULTI(title, std::u8string, json::map);
+		// LOAD_MULTI(title, std::u8string, json::map);
 		LOAD(genres);
 		LOAD(countries);
 		LOAD_OR_VALUE(age);
@@ -860,7 +1035,9 @@ namespace movies {
 		LOAD(episodes);
 		LOAD(crew);
 		JSON_MAP_COPY(people);
-		LOAD(summary);
+		LOAD_PREFIXED(title);
+		LOAD_PREFIXED(tagline);
+		LOAD_PREFIXED(summary);
 		LOAD(image);
 		LOAD(dates);
 		LOAD(year);
@@ -872,14 +1049,15 @@ namespace movies {
 
 	MERGE_BEGIN(movie_info, prefer_title which_title)
 	MERGE_ARRAY(refs);
-	MERGE_OBJ(title, which_title);
 	MERGE_ARRAY(genres);
 	MERGE_ARRAY(countries);
 	MERGE_ARRAY(age);
 	MERGE_ARRAY(tags);
 	MERGE_ARRAY(episodes);
 	MERGE_OBJ(crew, people, new_data.people);
-	MERGE_OPT(summary);
+	MERGE_PREFIXED(title, which_title);
+	MERGE_PREFIXED(tagline);
+	MERGE_PREFIXED(summary);
 	MERGE_OBJ(image);
 	MERGE_OBJ(dates);
 	MERGE_OPT(year);
@@ -940,6 +1118,7 @@ namespace movies {
 		auto node = json::read_json({data.data(), data.size()});
 
 		auto result = json::conv_result::ok;
+		printf("%.*s\n", (int)dirname.length(), as_sv(dirname).data());
 		LOAD_EX(::json::load(node, *this, dbg));
 
 		if (map_countries(aka)) {
