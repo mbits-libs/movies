@@ -145,6 +145,38 @@ namespace movies {
 			return prev.merge(next, which_title);
 		}
 
+		void merge_new_prefixed(std::string const& key,
+		                        std::u8string const& next,
+		                        translatable<std::u8string>& old_data,
+		                        json::conv_result& result) {
+			auto it = old_data.items.lower_bound(key);
+			if (it != old_data.end() && it->first == key) return;
+			result = json::conv_result::updated;
+			old_data.items.insert(it, {key, next});
+		}
+
+		void merge_new_prefixed(std::string const& key,
+		                        title_info const& next,
+		                        translatable<title_info>& old_data,
+		                        json::conv_result& result,
+		                        prefer_title which_title) {
+			auto it = old_data.items.lower_bound(key);
+			if (it != old_data.end() && it->first == key) return;
+			if (next.original) {
+				auto cur = old_data.begin();
+				for (auto end = old_data.end(); cur != end; ++cur) {
+					if (cur->second.original) break;
+				}
+
+				if (cur != old_data.end()) {
+					if (which_title == prefer_title::mine) return;
+					old_data.items.erase(cur);
+				}
+			}
+			result = json::conv_result::updated;
+			old_data.items.insert(it, {key, next});
+		}
+
 		template <json::JsonStorableValue ValueType, typename... AdditionalArgs>
 		json::conv_result merge_prefixed(
 		    translatable<ValueType>& old_data,
@@ -160,10 +192,7 @@ namespace movies {
 			}
 
 			for (auto const& [key, next] : new_data) {
-				auto it = old_data.items.lower_bound(key);
-				if (it != old_data.end() && it->first == key) continue;
-				result = json::conv_result::updated;
-				old_data.items.insert(it, {key, next});
+				merge_new_prefixed(key, next, old_data, result, args...);
 			}
 
 			return result;
@@ -705,8 +734,7 @@ namespace movies {
 			LOAD(text);
 			LOAD(sort);
 			LOAD(original);
-			if (!text)
-				return json::conv_result::opt;
+			if (!text) return json::conv_result::opt;
 			this->text = *text;
 		} else {
 			return json::conv_result::opt;
@@ -1104,7 +1132,7 @@ namespace movies {
 			          << " for writing\n";
 			return false;
 		}
-		json::write_json(json.get(), to_json());
+		json::write_json(json.get(), to_json(), json::four_spaces);
 		return true;
 	}
 
@@ -1118,7 +1146,6 @@ namespace movies {
 		auto node = json::read_json({data.data(), data.size()});
 
 		auto result = json::conv_result::ok;
-		printf("%.*s\n", (int)dirname.length(), as_sv(dirname).data());
 		LOAD_EX(::json::load(node, *this, dbg));
 
 		if (map_countries(aka)) {
