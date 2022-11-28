@@ -96,19 +96,20 @@ namespace movies {
 		role_list directors;
 		role_list writers;
 		role_list cast;
+		std::vector<person_name> names;
 
 		bool operator==(crew_info const&) const noexcept = default;
 
 		json::node to_json() const;
+		json::conv_result from_json_short(json::map const& data,
+		                                  std::string& dbg);
 		json::conv_result from_json(json::map const& data, std::string& dbg);
+		json::conv_result cleanup_names(std::string& dbg);
 		json::conv_result rebuild(
 		    json::map const& data,
 		    std::string& dbg,
-		    std::vector<person_name>& people,
 		    std::map<std::u8string, std::u8string> const& old_refs);
-		json::conv_result merge(crew_info const& new_data,
-		                        std::vector<person_name>& people,
-		                        std::vector<person_name> const& new_people);
+		json::conv_result merge(crew_info const& new_data);
 	};
 
 	struct poster_info {
@@ -160,7 +161,6 @@ namespace movies {
 		std::vector<std::u8string> episodes;
 
 		crew_info crew;
-		std::vector<person_name> people;
 		translatable<std::u8string> tagline;
 		translatable<std::u8string> summary;
 		image_info image;

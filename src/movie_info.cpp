@@ -437,16 +437,16 @@ namespace movies {
 
 			static std::vector<person_info_t> conv(
 			    crew_info::role_list const& list,
-			    std::vector<person_name> const& people,
+			    std::vector<person_name> const& names,
 			    bool from_existing) {
 				std::vector<person_info_t> result{};
 				result.resize(list.size());
 				for (size_t index = 0; index < list.size(); ++index) {
 					auto& dst = result[index];
 					auto const& src = list[index];
-					auto it = find_in(people, src.id);
+					auto it = find_in(names, src.id);
 
-					if (it != people.end()) {
+					if (it != names.end()) {
 						dst.name = it->name;
 						for (auto const& ref : it->refs) {
 							auto const view = std::u8string_view{ref};
@@ -911,22 +911,61 @@ namespace movies {
 		STORE(directors);
 		STORE(writers);
 		STORE(cast);
+		STORE(names);
 		if (result.empty()) return {};
+		return result;
+	}
+
+	json::conv_result crew_info::from_json_short(json::map const& data,
+	                                             std::string& dbg) {
+		auto result = json::conv_result::ok;
+		LOAD(directors);
+		LOAD(writers);
+		LOAD(cast);
+		LOAD_EX(cleanup_names(dbg));
 		return result;
 	}
 
 	json::conv_result crew_info::from_json(json::map const& data,
 	                                       std::string& dbg) {
 		auto result = json::conv_result::ok;
-		LOAD(directors);
-		LOAD(writers);
-		LOAD(cast);
+		LOAD(names);
+		LOAD_EX(from_json_short(data, dbg));
 		return result;
+	}
+
+	json::conv_result crew_info::cleanup_names(std::string& dbg) {
+		long long id{};
+		for (auto const& person : names) {
+			if (person.name == u8"N/A"sv) {
+				break;
+			}
+			++id;
+		}
+
+		if (id < names.size()) {
+			role_list* lists[] = {&directors, &writers, &cast};
+
+			for (auto const& list_ptr : lists) {
+				auto& list = *list_ptr;
+				auto it = std::find_if(
+				    list.begin(), list.end(),
+				    [id](role_info const& role) { return role.id == id; });
+				if (it != list.end()) list.erase(it);
+				for (auto& role : list) {
+					if (role.id > id) --role.id;
+				}
+			}
+
+			names.erase(std::next(names.begin(), id));
+			dbg.append("\n- N/A found in the name list"sv);
+			return json::conv_result::updated;
+		}
 	}
 
 	void add_person(std::u8string const& ref,
 	                std::optional<std::u8string> const& contribution,
-	                std::vector<person_name>& people,
+	                std::vector<person_name>& names,
 	                std::map<std::u8string, std::u8string> const& old_refs,
 	                std::map<std::u8string, long long>& re_ref,
 	                crew_info::role_list& dst) {
@@ -938,22 +977,21 @@ namespace movies {
 				return;
 			}
 
-			long long id = people.size();
-			people.push_back({it->second, {ref}});
+			long long id = names.size();
+			names.push_back({it->second, {ref}});
 			dst.push_back({id, contribution});
 			re_ref[ref] = id;
 			return;
 		}
 
-		long long id = people.size();
-		people.push_back({ref, {}});
+		long long id = names.size();
+		names.push_back({ref, {}});
 		dst.push_back({id, contribution});
 	}
 
 	json::conv_result crew_info::rebuild(
 	    json::map const& data,
 	    std::string& dbg,
-	    std::vector<person_name>& people,
 	    std::map<std::u8string, std::u8string> const& old_refs) {
 		std::map<std::u8string, long long> re_ref;
 
@@ -981,7 +1019,7 @@ namespace movies {
 				}
 
 				if (str) {
-					add_person(*str, std::nullopt, people, old_refs, re_ref,
+					add_person(*str, std::nullopt, names, old_refs, re_ref,
 					           list);
 					result = json::conv_result::updated;
 					continue;
@@ -1000,7 +1038,7 @@ namespace movies {
 						continue;
 					}
 					if (str && contrib) {
-						add_person(*str, val, people, old_refs, re_ref, list);
+						add_person(*str, val, names, old_refs, re_ref, list);
 						result = json::conv_result::updated;
 						continue;
 					}
@@ -1017,10 +1055,7 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result crew_info::merge(
-	    crew_info const& new_data,
-	    std::vector<person_name>& people,
-	    std::vector<person_name> const& new_people) {
+	json::conv_result crew_info::merge(crew_info const& new_data) {
 		role_list crew_info::*lists[] = {
 		    &crew_info::directors,
 		    &crew_info::writers,
@@ -1031,8 +1066,8 @@ namespace movies {
 		std::vector<person_name> used{};
 		for (auto list : lists) {
 			auto new_list = person_info_t::merge(
-			    person_info_t::conv(this->*list, people, true),
-			    person_info_t::conv(new_data.*list, new_people, false));
+			    person_info_t::conv(this->*list, names, true),
+			    person_info_t::conv(new_data.*list, new_data.names, false));
 
 			role_list copied{};
 			copied.reserve(new_list.size());
@@ -1048,8 +1083,8 @@ namespace movies {
 			}
 		}
 
-		if (used != people) {
-			std::swap(used, people);
+		if (used != names) {
+			std::swap(used, names);
 			if (result == json::conv_result::ok)
 				result = json::conv_result::updated;
 		}
@@ -1177,7 +1212,6 @@ namespace movies {
 		STORE(tags);
 		STORE(episodes);
 		STORE(crew);
-		STORE(people);
 		STORE_PREFIXED(title);
 		STORE_PREFIXED(tagline);
 		STORE_PREFIXED(summary);
@@ -1212,7 +1246,8 @@ namespace movies {
 	}
 
 	bool has_strings(json::map const& data) {
-		for (auto const& [_, value] : data) {
+		for (auto const& [property, value] : data) {
+			if (property == u8"names"sv) continue;
 			auto items = cast<json::array>(value);
 			if (!items) continue;
 			for (auto const& item : *items) {
@@ -1227,57 +1262,45 @@ namespace movies {
 		return false;
 	}
 
+	json::node const* at(json::map const& map, std::u8string const& key) {
+		auto it = map.find(key);
+		if (it == map.end()) return nullptr;
+		return &it->second;
+	}
 	json::conv_result movie_info::load_crew(json::map const& data,
 	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
+		auto outer_people_ptr = at(data, u8"people"s);
 		auto crew_map = json::cast<json::map>(data, u8"crew"s);
-		if (crew_map && (!json::cast<json::array>(data, u8"people"s) ||
-		                 has_strings(*crew_map))) {
-			std::map<std::u8string, std::u8string> old_refs{};
-			JSON_CAST(people, json::map);
-			LOAD_EX(map_from_json(json_people, old_refs, dbg));
+		if (crew_map) {
+			auto const outer_people_is_array =
+			    !!json::cast<json::array>(outer_people_ptr);
+			auto const inner_names_is_absent = !at(*crew_map, u8"names"s);
+			auto const oldest_version =
+			    !outer_people_is_array && inner_names_is_absent;
 
-			LOAD(people);
-			LOAD_EX(crew.rebuild(*crew_map, dbg, people, old_refs));
+			if (oldest_version || has_strings(*crew_map)) {
+				std::map<std::u8string, std::u8string> old_refs{};
+				auto json_people = cast<json::map>(outer_people_ptr);
+				LOAD_EX(map_from_json(json_people, old_refs, dbg));
 
-			dbg.append("\n- Old-style crew & cast was found"sv);
-			return json::conv_result::updated;
+				LOAD_EX(crew.rebuild(*crew_map, dbg, old_refs));
+
+				dbg.append("\n- Old-style crew & cast was found"sv);
+				return json::conv_result::updated;
+			}
+
+			if (outer_people_is_array) {
+				LOAD_EX(::json::load(*json::cast<json::array>(outer_people_ptr),
+				                     crew.names, dbg));
+				LOAD_EX(crew.from_json_short(*crew_map, dbg));
+
+				dbg.append("\n- People names outside crew object"sv);
+				return json::conv_result::updated;
+			}
 		}
 
-		LOAD(people);
 		LOAD(crew);
-
-		long long id{};
-		for (auto const& person : people) {
-			if (person.name == u8"N/A"sv) {
-				break;
-			}
-			++id;
-		}
-
-		if (id < people.size()) {
-			crew_info::role_list* lists[] = {
-			    &crew.directors,
-			    &crew.writers,
-			    &crew.cast,
-			};
-
-			for (auto const& list_ptr : lists) {
-				auto& list = *list_ptr;
-				auto it = std::find_if(
-				    list.begin(), list.end(),
-				    [id](role_info const& role) { return role.id == id; });
-				if (it != list.end()) list.erase(it);
-				for (auto& role : list) {
-					if (role.id > id) --role.id;
-				}
-			}
-
-			people.erase(std::next(people.begin(), id));
-			dbg.append("\n- N/A found in the name list"sv);
-			return json::conv_result::updated;
-		}
-
 		return result;
 	}
 
@@ -1358,7 +1381,7 @@ namespace movies {
 	MERGE_ARRAY(age);
 	MERGE_ARRAY(tags);
 	MERGE_ARRAY(episodes);
-	MERGE_OBJ(crew, people, new_data.people);
+	MERGE_OBJ(crew);
 	MERGE_PREFIXED(title, which_title);
 	MERGE_PREFIXED(tagline);
 	MERGE_PREFIXED(summary);
