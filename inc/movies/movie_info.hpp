@@ -21,7 +21,6 @@ namespace movies {
 	struct alpha_2_aliases;
 
 	enum class prefer_title { mine, theirs };
-	using people_map = std::map<std::u8string, std::u8string>;
 
 	template <typename Value>
 	struct translatable {
@@ -72,29 +71,44 @@ namespace movies {
 		bool fixup(std::string& dbg);
 	};
 
-	struct person_info {
-		std::u8string key;
+	struct role_info {
+		long long id;
 		std::optional<std::u8string> contribution;
 
-		auto operator<=>(person_info const&) const = default;
+		auto operator<=>(role_info const&) const noexcept = default;
+
+		json::node to_json() const;
+		json::conv_result from_json(json::node const& data, std::string& dbg);
+	};
+
+	struct person_name {
+		std::u8string name;
+		std::vector<std::u8string> refs;
+
+		auto operator<=>(person_name const&) const noexcept = default;
 
 		json::node to_json() const;
 		json::conv_result from_json(json::node const& data, std::string& dbg);
 	};
 
 	struct crew_info {
-		using people_list = std::vector<person_info>;
-		people_list directors;
-		people_list writers;
-		people_list cast;
+		using role_list = std::vector<role_info>;
+		role_list directors;
+		role_list writers;
+		role_list cast;
 
 		bool operator==(crew_info const&) const noexcept = default;
 
 		json::node to_json() const;
 		json::conv_result from_json(json::map const& data, std::string& dbg);
+		json::conv_result rebuild(
+		    json::map const& data,
+		    std::string& dbg,
+		    std::vector<person_name>& people,
+		    std::map<std::u8string, std::u8string> const& old_refs);
 		json::conv_result merge(crew_info const& new_data,
-		                        people_map& people,
-		                        people_map const& new_people);
+		                        std::vector<person_name>& people,
+		                        std::vector<person_name> const& new_people);
 	};
 
 	struct poster_info {
@@ -146,7 +160,7 @@ namespace movies {
 		std::vector<std::u8string> episodes;
 
 		crew_info crew;
-		people_map people;
+		std::vector<person_name> people;
 		translatable<std::u8string> tagline;
 		translatable<std::u8string> summary;
 		image_info image;
@@ -156,6 +170,9 @@ namespace movies {
 		bool operator==(movie_info const&) const noexcept = default;
 
 		json::map to_json() const;
+		json::conv_result load_crew(json::map const& data, std::string& dbg);
+		json::conv_result load_old_title(json::map const& data,
+		                                 std::string& dbg);
 		json::conv_result from_json(json::map const& data, std::string& dbg);
 		json::conv_result merge(movie_info const&, prefer_title);
 		void add_tag(std::u8string_view tag);

@@ -184,7 +184,7 @@ namespace movies {
 		    AdditionalArgs... args) {
 			auto result = json::conv_result::ok;
 			for (auto& [key, prev] : old_data) {
-				auto it = new_data.find(key);
+				auto it = new_data.items.find(key);
 				if (it == new_data.end()) continue;
 				auto const res = merge_one_prefixed(prev, it->second, args...);
 				if (!is_ok(res)) result = res;
@@ -220,7 +220,7 @@ namespace movies {
 		}
 
 		json::conv_result array_from_json(json::array const* input,
-		                                  std::vector<person_info>& output,
+		                                  std::vector<role_info>& output,
 		                                  std::string& dbg) {
 			if (!input) return json::conv_result::ok;
 
@@ -230,7 +230,7 @@ namespace movies {
 			auto result = json::conv_result::ok;
 			for (auto const& node : *input) {
 				output.emplace_back();
-				person_info info{};
+				role_info info{};
 				auto const res = output.back().from_json(node, dbg);
 				if (!is_ok(res)) result = res;
 				if (result == json::conv_result::failed) break;
@@ -272,9 +272,10 @@ namespace movies {
 			return array_from_json(std::get<1>(input), output, dbg);
 		}
 
-		json::conv_result map_from_json(json::map const* input,
-		                                people_map& output,
-		                                std::string&) {
+		json::conv_result map_from_json(
+		    json::map const* input,
+		    std::map<std::u8string, std::u8string>& output,
+		    std::string&) {
 			if (!input) return json::conv_result::ok;
 
 			output.clear();
@@ -379,41 +380,93 @@ namespace movies {
 	if (auto cmp = lhs.fld <=> rhs.fld; cmp != 0) return cmp < 0
 
 		struct person_info_t {
-			std::u8string name;
-			std::optional<std::u8string> key;
+			std::optional<std::u8string> name;
+			std::map<std::u8string, std::u8string> refs;
 			std::optional<std::u8string> contribution;
 			size_t original_position{};
 			bool from_existing{};
 
 			person_info_t merge(person_info_t const& new_data) && {
 				// names must be equal
-				key = new_data.key || key;
+				for (auto const& [key, value] : new_data.refs) {
+					auto it = refs.lower_bound(key);
+					if (it != refs.end() && it->first == key) continue;
+					refs.insert(it, {key, value});
+				}
 				contribution = new_data.contribution || contribution;
 				return std::move(*this);
 			}
 
+			long long add_to(std::vector<person_name>& used) const {
+				if (!name) {
+					return (std::numeric_limits<long long>::max)();
+				}
+				std::vector<std::u8string> reflist{};
+				reflist.reserve(refs.size());
+				for (auto const& [key, value] : refs) {
+					if (value.empty()) {
+						reflist.push_back(key);
+					} else {
+						std::u8string ref{};
+						ref.reserve(key.length() + value.length() + 1);
+						ref.append(key);
+						ref.push_back(':');
+						ref.append(value);
+						reflist.push_back(ref);
+					}
+				}
+
+				long long index{};
+				for (auto const& info : used) {
+					if (info.name == *name && info.refs == reflist)
+						return index;
+					++index;
+				}
+
+				used.push_back({*name, std::move(reflist)});
+				return index;
+			}
+
+			static auto find_in(std::vector<person_name> const& list,
+			                    long long index) {
+				if (index < 0) return list.end();
+				auto const uindex = static_cast<size_t>(index);
+				return uindex >= list.size() ? list.end()
+				                             : std::next(list.begin(), uindex);
+			}
+
 			static std::vector<person_info_t> conv(
-			    crew_info::people_list const& list,
-			    people_map const& people,
+			    crew_info::role_list const& list,
+			    std::vector<person_name> const& people,
 			    bool from_existing) {
 				std::vector<person_info_t> result{};
 				result.resize(list.size());
 				for (size_t index = 0; index < list.size(); ++index) {
 					auto& dst = result[index];
 					auto const& src = list[index];
-					auto it = people.find(src.key);
+					auto it = find_in(people, src.id);
 
-					if (it == people.end()) {
-						dst.name = src.key;
-					} else {
-						dst.name = it->second;
-						dst.key = src.key;
+					if (it != people.end()) {
+						dst.name = it->name;
+						for (auto const& ref : it->refs) {
+							auto const view = std::u8string_view{ref};
+							auto const pos = ref.find(':');
+							if (pos == std::u8string::npos) {
+								dst.refs[ref].clear();
+							} else {
+								dst.refs[ref.substr(0, pos)] =
+								    ref.substr(pos + 1);
+							}
+						}
 					}
 
 					dst.contribution = src.contribution;
 					dst.original_position = index;
 					dst.from_existing = from_existing;
 				}
+				std::erase_if(result, [](person_info_t const& person) {
+					return !person.name;
+				});
 
 				std::stable_sort(
 				    result.begin(), result.end(),
@@ -421,7 +474,7 @@ namespace movies {
 				       person_info_t const& rhs) -> bool {
 					    TWC(name);
 					    TWC(contribution);
-					    TWC(key);
+					    TWC(refs);
 					    if (lhs.original_position != rhs.original_position)
 						    return lhs.original_position <
 						           rhs.original_position;
@@ -499,7 +552,7 @@ namespace movies {
 						           rhs.original_position;
 					    TWC(name);
 					    TWC(contribution);
-					    TWC(key);
+					    TWC(refs);
 					    return false;
 				    });
 
@@ -781,33 +834,73 @@ namespace movies {
 		return changed;
 	}
 
-	json::node person_info::to_json() const {
-		if (!contribution) return key;
-		return json::array{key, *contribution};
+	json::node role_info::to_json() const {
+		if (!contribution) return id;
+		return json::array{id, *contribution};
 	}
 
-	json::conv_result person_info::from_json(json::node const& data,
-	                                         std::string&) {
-		auto str = cast<std::u8string>(data);
+	json::conv_result role_info::from_json(json::node const& data,
+	                                       std::string&) {
+		auto ref = cast<long long>(data);
 		auto arr = cast<json::array>(data);
 
-		if (str) {
-			key = *str;
+		if (ref) {
+			id = *ref;
 			contribution = std::nullopt;
 			return json::conv_result::ok;
 		}
 
 		if (arr && arr->size() == 2) {
-			auto crew_name = json::cast<std::u8string>(arr->front());
+			auto ref = json::cast<long long>(arr->front());
 			auto contrib = json::cast<std::u8string>(arr->back());
-			if (crew_name && contrib) {
-				key = *crew_name;
+			if (ref && contrib) {
+				id = *ref;
 				if (contrib->empty())
 					contribution = std::nullopt;
 				else
 					contribution = *contrib;
 				return json::conv_result::ok;
 			}
+		}
+
+		return json::conv_result::failed;
+	}
+
+	json::node person_name::to_json() const {
+		if (refs.empty()) return name;
+		json::array result{};
+		result.reserve(refs.size() + 1);
+		result.push_back(name);
+		std::transform(refs.begin(), refs.end(), std::back_inserter(result),
+		               [](auto const& item) { return item; });
+		return json::node{std::move(result)};
+	}
+
+	json::conv_result person_name::from_json(json::node const& data,
+	                                         std::string& dbg) {
+		auto str = cast<std::u8string>(data);
+		auto arr = cast<json::array>(data);
+
+		if (str) {
+			name = *str;
+			refs.clear();
+			return json::conv_result::ok;
+		}
+
+		if (arr) {
+			if (!arr->empty()) refs.reserve(arr->size());
+			bool name_set = false;
+			for (auto const& item : *arr) {
+				auto val = cast<std::u8string>(item);
+				if (!val) continue;
+				if (!name_set) {
+					name_set = true;
+					name = *val;
+					continue;
+				}
+				refs.push_back(*val);
+			}
+			if (name_set) return json::conv_result::ok;
 		}
 
 		return json::conv_result::failed;
@@ -831,33 +924,121 @@ namespace movies {
 		return result;
 	}
 
-	json::conv_result crew_info::merge(crew_info const& new_data,
-	                                   people_map& people,
-	                                   people_map const& new_people) {
-		people_list crew_info::*lists[] = {
+	void add_person(std::u8string const& ref,
+	                std::optional<std::u8string> const& contribution,
+	                std::vector<person_name>& people,
+	                std::map<std::u8string, std::u8string> const& old_refs,
+	                std::map<std::u8string, long long>& re_ref,
+	                crew_info::role_list& dst) {
+		auto it = old_refs.find(ref);
+		if (it != old_refs.end()) {
+			auto it2 = re_ref.find(ref);
+			if (it2 != re_ref.end()) {
+				dst.push_back({it2->second, contribution});
+				return;
+			}
+
+			long long id = people.size();
+			people.push_back({it->second, {ref}});
+			dst.push_back({id, contribution});
+			re_ref[ref] = id;
+			return;
+		}
+
+		long long id = people.size();
+		people.push_back({ref, {}});
+		dst.push_back({id, contribution});
+	}
+
+	json::conv_result crew_info::rebuild(
+	    json::map const& data,
+	    std::string& dbg,
+	    std::vector<person_name>& people,
+	    std::map<std::u8string, std::u8string> const& old_refs) {
+		std::map<std::u8string, long long> re_ref;
+
+		std::pair<role_list*, std::u8string> lists[] = {
+		    {&directors, u8"directors"s},
+		    {&writers, u8"writers"s},
+		    {&cast, u8"cast"s},
+		};
+		auto result = json::conv_result::ok;
+
+		for (auto const& [list_ptr, name] : lists) {
+			auto& list = *list_ptr;
+			list.clear();
+			auto items = json::cast<json::array>(data, name);
+			if (!items) continue;
+
+			for (auto const& item : *items) {
+				auto ref = json::cast<long long>(item);
+				auto str = json::cast<std::u8string>(item);
+				auto arr = json::cast<json::array>(item);
+
+				if (ref) {
+					list.push_back({*ref, std::nullopt});
+					continue;
+				}
+
+				if (str) {
+					add_person(*str, std::nullopt, people, old_refs, re_ref,
+					           list);
+					result = json::conv_result::updated;
+					continue;
+				}
+
+				if (arr && arr->size() == 2) {
+					auto ref = json::cast<long long>(arr->front());
+					auto str = json::cast<std::u8string>(arr->front());
+					auto contrib = json::cast<std::u8string>(arr->back());
+
+					std::optional<std::u8string> val;
+					if (contrib && !contrib->empty()) val = *contrib;
+
+					if (ref && contrib) {
+						list.push_back({*ref, val});
+						continue;
+					}
+					if (str && contrib) {
+						add_person(*str, val, people, old_refs, re_ref, list);
+						result = json::conv_result::updated;
+						continue;
+					}
+				}
+
+				return json::conv_result::failed;
+			}
+		}
+
+		if (result == json::conv_result::updated) {
+			dbg.append("\n- Cast & crew needs rewiring"sv);
+		}
+
+		return result;
+	}
+
+	json::conv_result crew_info::merge(
+	    crew_info const& new_data,
+	    std::vector<person_name>& people,
+	    std::vector<person_name> const& new_people) {
+		role_list crew_info::*lists[] = {
 		    &crew_info::directors,
 		    &crew_info::writers,
 		    &crew_info::cast,
 		};
 
 		auto result = json::conv_result::ok;
-		people_map used{};
+		std::vector<person_name> used{};
 		for (auto list : lists) {
 			auto new_list = person_info_t::merge(
 			    person_info_t::conv(this->*list, people, true),
 			    person_info_t::conv(new_data.*list, new_people, false));
 
-			people_list copied{};
+			role_list copied{};
 			copied.reserve(new_list.size());
 			for (auto& item : new_list) {
-				person_info person{{}, std::move(item.contribution)};
-				if (item.key) {
-					person.key = *item.key;
-					used[*item.key] = std::move(item.name);
-				} else {
-					person.key = std::move(item.name);
-				}
-				copied.emplace_back(std::move(person));
+				auto const id = item.add_to(used);
+				copied.push_back(role_info{id, std::move(item.contribution)});
 			}
 
 			if (copied != this->*list) {
@@ -1030,39 +1211,113 @@ namespace movies {
 		return json::conv_result::ok;
 	}
 
+	bool has_strings(json::map const& data) {
+		for (auto const& [_, value] : data) {
+			auto items = cast<json::array>(value);
+			if (!items) continue;
+			for (auto const& item : *items) {
+				if (cast<json::string>(item)) {
+					return true;
+				}
+				auto arr = cast<json::array>(item);
+				if (arr && !arr->empty() && cast<json::string>(arr->front()))
+					return true;
+			}
+		}
+		return false;
+	}
+
+	json::conv_result movie_info::load_crew(json::map const& data,
+	                                        std::string& dbg) {
+		auto result = json::conv_result::ok;
+		auto crew_map = json::cast<json::map>(data, u8"crew"s);
+		if (crew_map && (!json::cast<json::array>(data, u8"people"s) ||
+		                 has_strings(*crew_map))) {
+			std::map<std::u8string, std::u8string> old_refs{};
+			JSON_CAST(people, json::map);
+			LOAD_EX(map_from_json(json_people, old_refs, dbg));
+
+			LOAD(people);
+			LOAD_EX(crew.rebuild(*crew_map, dbg, people, old_refs));
+
+			dbg.append("\n- Old-style crew & cast was found"sv);
+			return json::conv_result::updated;
+		}
+
+		LOAD(people);
+		LOAD(crew);
+
+		long long id{};
+		for (auto const& person : people) {
+			if (person.name == u8"N/A"sv) {
+				break;
+			}
+			++id;
+		}
+
+		if (id < people.size()) {
+			crew_info::role_list* lists[] = {
+			    &crew.directors,
+			    &crew.writers,
+			    &crew.cast,
+			};
+
+			for (auto const& list_ptr : lists) {
+				auto& list = *list_ptr;
+				auto it = std::find_if(
+				    list.begin(), list.end(),
+				    [id](role_info const& role) { return role.id == id; });
+				if (it != list.end()) list.erase(it);
+				for (auto& role : list) {
+					if (role.id > id) --role.id;
+				}
+			}
+
+			people.erase(std::next(people.begin(), id));
+			dbg.append("\n- N/A found in the name list"sv);
+			return json::conv_result::updated;
+		}
+
+		return result;
+	}
+
+	json::conv_result movie_info::load_old_title(json::map const& data,
+	                                             std::string& dbg) {
+		old_title_info value{};
+		auto const ret = json::load(data, u8"title"s, value, dbg);
+		if (ret == ::json::conv_result::failed) return ret;
+		if (!!value.local || !!value.orig) {
+			// this is old-style JSON.
+			if (!value.local && value.orig) value.local = *value.orig;
+			auto& def = title.items[{}];
+			def.text = *value.local;
+			def.sort = value.sort;
+			if (value.orig) {
+				auto& def = title.items["<unk>"];
+				def.text = *value.orig;
+				def.sort = value.sort;
+				def.original = true;
+			}
+
+			dbg.append("\n- Old-style title was found"sv);
+			return ::json::conv_result::updated;
+		}
+		return ::json::conv_result::ok;
+	}
+
 	json::conv_result movie_info::from_json(json::map const& data,
 	                                        std::string& dbg) {
 		auto result = json::conv_result::ok;
-		JSON_CAST(people, json::map);
 
-		do {
-			old_title_info value{};
-			auto const ret = json::load(data, u8"title"s, value, dbg);
-			if (ret == ::json::conv_result::failed) return ret;
-			if (!!value.local || !!value.orig) {
-				// this is old-style JSON.
-				if (!value.local && value.orig) value.local = *value.orig;
-				auto& def = title.items[{}];
-				def.text = *value.local;
-				def.sort = value.sort;
-				if (value.orig) {
-					auto& def = title.items["<unk>"];
-					def.text = *value.orig;
-					def.sort = value.sort;
-					def.original = true;
-				}
-			}
-		} while (0);
+		LOAD_EX(load_old_title(data, dbg));
 
 		LOAD(refs);
-		// LOAD_MULTI(title, std::u8string, json::map);
 		LOAD(genres);
 		LOAD(countries);
 		LOAD_OR_VALUE(age);
 		LOAD(tags);
 		LOAD(episodes);
-		LOAD(crew);
-		JSON_MAP_COPY(people);
+		LOAD_EX(load_crew(data, dbg));
 		LOAD_PREFIXED(title);
 		LOAD_PREFIXED(tagline);
 		LOAD_PREFIXED(summary);
@@ -1071,6 +1326,27 @@ namespace movies {
 		LOAD(year);
 		LOAD(runtime);
 		LOAD(rating);
+
+		bool has_unk_original = false;
+		bool has_other_original = false;
+
+		for (auto const& [key, value] : title) {
+			if (value.original) {
+				if (key == "<?>"sv) {
+					has_unk_original = true;
+					if (has_other_original) break;
+				} else {
+					has_other_original = true;
+					if (has_unk_original) break;
+				}
+			}
+		}
+
+		if (has_other_original && has_unk_original) {
+			title.items.erase("<?>");
+			result = json::conv_result::updated;
+			dbg.append("\n- There is an unneeded title:<?>"sv);
+		}
 
 		return result;
 	}
