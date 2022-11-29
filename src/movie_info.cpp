@@ -943,7 +943,7 @@ namespace movies {
 			++id;
 		}
 
-		if (id < names.size()) {
+		if (static_cast<size_t>(id) < names.size()) {
 			role_list* lists[] = {&directors, &writers, &cast};
 
 			for (auto const& list_ptr : lists) {

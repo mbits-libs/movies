@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <span>
 
 #ifdef MOVIES_HAS_NAVIGATOR
 #include <tangle/nav/navigator.hpp>
@@ -41,6 +42,14 @@ namespace movies {
 				auto pos = lang.rfind('-');
 				if (pos == std::string_view::npos) pos = 0;
 				lang = lang.substr(0, pos);
+			}
+			return items.find({});
+		}
+
+		auto find(std::span<std::string const> langs) const {
+			for (auto const& lang : langs) {
+				auto it = items.find(lang);
+				if (it != items.end()) return it;
 			}
 			return items.find({});
 		}
