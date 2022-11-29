@@ -961,6 +961,8 @@ namespace movies {
 			dbg.append("\n- N/A found in the name list"sv);
 			return json::conv_result::updated;
 		}
+
+		return json::conv_result::ok;
 	}
 
 	void add_person(std::u8string const& ref,
