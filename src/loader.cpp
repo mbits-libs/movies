@@ -39,7 +39,11 @@ namespace movies {
 		}
 
 		file_ref video_ref(fs::path const& videos_root, string const& id) {
-			return get_ref(videos_root / (id + u8".mp4"), id);
+			auto mp4 = videos_root / (id + u8".mp4");
+			if (std::filesystem::exists(mp4)) return get_ref(mp4, id);
+			auto mkv = videos_root / (id + u8".mkv");
+			if (std::filesystem::exists(mkv)) return get_ref(mkv, id);
+			return get_ref(mp4, id);
 		}
 
 		map<string, movie_info> known_movies(fs::path const& db_root, bool store_updates) {
@@ -91,12 +95,13 @@ namespace movies {
 			if (ec) return result;
 
 			for (auto&& entry : iterator) {
-				if (entry.path().extension().generic_u8string() != u8".mp4")
+				auto const ext = entry.path().extension().u8string();
+				if (ext != u8".mp4"sv && ext != u8".mkv")
 					continue;
 				auto movie_path = entry.path();
 				auto u8ident =
 				    fs::relative(movie_path, videos_root).generic_u8string();
-				u8ident = u8ident.substr(0, u8ident.length() - 4);
+				u8ident = u8ident.substr(0, u8ident.length() - ext.length());
 				result.emplace_back(std::move(u8ident));
 			}
 
