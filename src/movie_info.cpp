@@ -5,6 +5,7 @@
 #include <format>
 #else
 #include <date/date.h>
+#include <fmt/format.h>
 #endif
 #include <execution>
 #include <io/file.hpp>
@@ -16,6 +17,12 @@
 #include <movies/opt.hpp>
 #include <numeric>
 #include <set>
+
+#ifdef _MSC_VER
+namespace fmt {
+	using format;
+}
+#endif
 
 namespace movies {
 	namespace {
@@ -612,7 +619,7 @@ namespace movies {
 			for (auto& image : self.gallery) {
 				std::optional<std::u8string> sure{std::move(image)};
 				rebase_img(sure, base, mapping, dirname,
-				           as_u8(std::format("02-gallery-{:02}"sv, index++)));
+				           as_u8(fmt::format("02-gallery-{:02}"sv, index++)));
 				if (sure) image = std::move(*sure);
 			}
 
