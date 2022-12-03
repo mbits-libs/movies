@@ -7,10 +7,10 @@
 #include <json/json.hpp>
 #include <json/serdes.hpp>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <span>
 
 #ifdef MOVIES_HAS_NAVIGATOR
 #include <tangle/nav/navigator.hpp>
@@ -25,7 +25,9 @@ namespace movies {
 
 	template <typename Value>
 	struct translatable {
-		std::map<std::string, Value> items{};
+		using map_t = std::map<std::string, Value>;
+		using const_iterator = map_t::const_iterator;
+		map_t items{};
 
 		bool operator==(translatable const&) const noexcept = default;
 
@@ -34,7 +36,13 @@ namespace movies {
 		auto begin() { return items.begin(); }
 		auto end() { return items.end(); }
 
-		auto find(std::string_view lang) const {
+		const_iterator fallback() const {
+			std::string en[] = {"en-US"s, "en"s};
+			return find(en);
+		}
+
+		const_iterator find(std::string_view lang) const {
+			using namespace std::literals;
 			while (!lang.empty()) {
 				auto it = items.find({lang.data(), lang.size()});
 				if (it != items.end()) return it;
@@ -43,14 +51,22 @@ namespace movies {
 				if (pos == std::string_view::npos) pos = 0;
 				lang = lang.substr(0, pos);
 			}
-			return items.find({});
+			return fallback();
 		}
 
-		auto find(std::span<std::string const> langs) const {
+		const_iterator find(std::span<std::string const> langs) const {
+			using namespace std::literals;
+			bool has_en_US = false;
+			bool has_en = false;
 			for (auto const& lang : langs) {
+				if (lang == "en-US"sv) has_en_US = true;
+				if (lang == "en"sv) has_en = true;
+
 				auto it = items.find(lang);
 				if (it != items.end()) return it;
 			}
+
+			if (!has_en_US || !has_en) return fallback();
 			return items.find({});
 		}
 

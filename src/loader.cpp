@@ -158,7 +158,8 @@ namespace movies {
 			if (pos != std::string_view::npos) return input;
 			auto result = input;
 			for (auto& byte : result) {
-				if (byte == '-' || byte == '_') byte = ' ';
+				if (byte == '-' || byte == '_' || byte == '.' || byte == '/')
+					byte = ' ';
 			}
 			if (!result.empty())
 				result.front() =
