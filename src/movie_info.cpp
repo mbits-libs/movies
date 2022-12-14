@@ -20,7 +20,7 @@
 
 #ifdef _MSC_VER
 namespace fmt {
-	using format;
+	using std::format;
 }
 #endif
 
