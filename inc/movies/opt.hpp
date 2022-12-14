@@ -45,7 +45,7 @@ void operator>>(std::optional<In> const& in, Pred pred) {
 }
 
 struct defval_t {};
-static defval_t nothing{};
+inline constexpr defval_t nothing{};
 
 template <typename In, typename Def>
 auto operator||(std::optional<In> const& in, Def&& def) {
