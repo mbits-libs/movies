@@ -26,7 +26,7 @@ namespace movies {
 	template <typename Value>
 	struct translatable {
 		using map_t = std::map<std::string, Value>;
-		using const_iterator = map_t::const_iterator;
+		using const_iterator = typename map_t::const_iterator;
 		map_t items{};
 
 		bool operator==(translatable const&) const noexcept = default;
