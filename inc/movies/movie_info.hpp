@@ -203,7 +203,7 @@ namespace movies {
 		void add_tag(std::u8string_view tag);
 		void remove_tag(std::u8string_view tag);
 		bool has_tag(std::u8string_view tag) const noexcept;
-		bool store(fs::path const& db_root, std::u8string_view dirname);
+		bool store(fs::path const& db_root, std::u8string_view dirname) const;
 		json::conv_result load(fs::path const& db_root,
 		                       std::u8string_view dirname,
 		                       alpha_2_aliases const& aka,

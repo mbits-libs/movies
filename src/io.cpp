@@ -26,7 +26,7 @@ namespace io {
 		auto json = file::open(path, "rb");
 		if (!json) return result;
 
-		char8_t buffer[8192];
+		char8_t buffer[8192];  // NOLINT(readability-magic-numbers)
 		size_t read{};
 		while ((read = std::fread(buffer, 1, sizeof(buffer), json.get())) !=
 		       0) {

@@ -328,15 +328,19 @@ namespace movies {
 			std::vector<mid_pair> midway{};
 			while (index_old < size_old || index_new < size_new) {
 				if (index_old == size_old) {
-					midway.insert(midway.end(), new_.begin() + index_new,
-					              new_.end());
+					midway.insert(
+					    midway.end(),
+					    new_.begin() + static_cast<ptrdiff_t>(index_new),
+					    new_.end());
 					index_new = size_new;
 					continue;
 				}
 
 				if (index_new == size_new) {
-					midway.insert(midway.end(), old_.begin() + index_old,
-					              old_.end());
+					midway.insert(
+					    midway.end(),
+					    old_.begin() + static_cast<ptrdiff_t>(index_old),
+					    old_.end());
 					index_old = size_old;
 					continue;
 				}
@@ -438,8 +442,10 @@ namespace movies {
 			                    long long index) {
 				if (index < 0) return list.end();
 				auto const uindex = static_cast<size_t>(index);
-				return uindex >= list.size() ? list.end()
-				                             : std::next(list.begin(), uindex);
+				return uindex >= list.size()
+				           ? list.end()
+				           : std::next(list.begin(),
+				                       static_cast<ptrdiff_t>(uindex));
 			}
 
 			static std::vector<person_info_t> conv(
@@ -487,7 +493,7 @@ namespace movies {
 						           rhs.original_position;
 					    if (lhs.from_existing == rhs.from_existing)
 						    return false;
-					    return lhs.from_existing == false;
+					    return !lhs.from_existing;
 				    });
 				return result;
 			}
@@ -504,7 +510,8 @@ namespace movies {
 				while (index_old < size_old || index_new < size_new) {
 					if (index_old == size_old) {
 						result.insert(result.end(),
-						              new_data.begin() + index_new,
+						              new_data.begin() +
+						                  static_cast<ptrdiff_t>(index_new),
 						              new_data.end());
 						index_new = size_new;
 						continue;
@@ -512,7 +519,8 @@ namespace movies {
 
 					if (index_new == size_new) {
 						result.insert(result.end(),
-						              old_data.begin() + index_old,
+						              old_data.begin() +
+						                  static_cast<ptrdiff_t>(index_old),
 						              old_data.end());
 						index_old = size_old;
 						continue;
@@ -553,7 +561,7 @@ namespace movies {
 				    [](person_info_t const& lhs,
 				       person_info_t const& rhs) -> bool {
 					    if (lhs.from_existing != rhs.from_existing)
-						    return lhs.from_existing == false;
+						    return !lhs.from_existing;
 					    if (lhs.original_position != rhs.original_position)
 						    return lhs.original_position <
 						           rhs.original_position;
@@ -655,11 +663,11 @@ namespace movies {
 
 #define STORE_PREFIXED(field_name) store_prefixed(result, NAMED_SV(field_name))
 
-#define MERGE(field_name)                      \
-	auto const prev_##field_name = field_name; \
-	field_name = new_data.field_name
+#define MERGE(field_name)                        \
+	auto const prev_##field_name = (field_name); \
+	(field_name) = new_data.field_name
 
-#define CHANGED(field_name) (prev_##field_name != field_name)
+#define CHANGED(field_name) (prev_##field_name != (field_name))
 
 #ifdef _MSC_VER
 #define MERGE_BEGIN(TYPE, ...)                                         \
@@ -690,7 +698,7 @@ namespace movies {
 #define MERGE_OPT(field_name)                                         \
 	{                                                                 \
 		auto const prev_##field_name = field_name;                    \
-		field_name = new_data.field_name || field_name;               \
+		(field_name) = new_data.field_name || (field_name);           \
 		if (CHANGED(field_name)) result = json::conv_result::updated; \
 	}
 
@@ -763,9 +771,9 @@ namespace movies {
 	json::node title_info::to_json() const {
 		std::vector<std::pair<json::string, json::node>> values;
 		values.reserve(3);
-		values.push_back({u8"text", text});
-		if (sort) values.push_back({u8"sort", *sort});
-		if (original) values.push_back({u8"original", true});
+		values.emplace_back(u8"text", text);
+		if (sort) values.emplace_back(u8"sort", *sort);
+		if (original) values.emplace_back(u8"original", true);
 
 		if (values.empty()) return {};
 		if (values.size() == 1) return std::move(values.front().second);
@@ -884,7 +892,7 @@ namespace movies {
 	}
 
 	json::conv_result person_name::from_json(json::node const& data,
-	                                         std::string& dbg) {
+	                                         std::string&) {
 		auto str = cast<std::u8string>(data);
 		auto arr = cast<json::array>(data);
 
@@ -986,14 +994,14 @@ namespace movies {
 				return;
 			}
 
-			long long id = names.size();
+			auto const id = static_cast<long long>(names.size());
 			names.push_back({it->second, {ref}});
 			dst.push_back({id, contribution});
 			re_ref[ref] = id;
 			return;
 		}
 
-		long long id = names.size();
+		auto const id = static_cast<long long>(names.size());
 		names.push_back({ref, {}});
 		dst.push_back({id, contribution});
 	}
@@ -1065,15 +1073,13 @@ namespace movies {
 	}
 
 	json::conv_result crew_info::merge(crew_info const& new_data) {
-		role_list crew_info::*lists[] = {
-		    &crew_info::directors,
-		    &crew_info::writers,
-		    &crew_info::cast,
-		};
-
 		auto result = json::conv_result::ok;
 		std::vector<person_name> used{};
-		for (auto list : lists) {
+		for (auto list : {
+		         &crew_info::directors,
+		         &crew_info::writers,
+		         &crew_info::cast,
+		     }) {
 			auto new_list = person_info_t::merge(
 			    person_info_t::conv(this->*list, names, true),
 			    person_info_t::conv(new_data.*list, new_data.names, false));
@@ -1176,11 +1182,10 @@ namespace movies {
 
 	dates_info::opt_seconds dates_info::from_http_date(
 	    std::string const& header) {
-		static constexpr char const* formats[] = {
-		    "%a, %d %b %Y %T GMT",
-		    "%A, %d-%b-%y %T GMT",
-		};
-		for (auto format : formats) {
+		for (auto format : {
+		         "%a, %d %b %Y %T GMT",
+		         "%A, %d-%b-%y %T GMT",
+		     }) {
 			std::istringstream in(header);
 			std::chrono::sys_seconds result{};
 #ifdef _MSC_VER
@@ -1403,7 +1408,7 @@ namespace movies {
 
 	void movie_info::add_tag(std::u8string_view tag) {
 		auto it = std::find(tags.begin(), tags.end(), tag);
-		if (it == tags.end()) tags.push_back({tag.data(), tag.size()});
+		if (it == tags.end()) tags.emplace_back(tag.data(), tag.size());
 	}
 
 	void movie_info::remove_tag(std::u8string_view tag) {
@@ -1426,7 +1431,7 @@ namespace movies {
 	}
 
 	bool movie_info::store(fs::path const& db_root,
-	                       std::u8string_view dirname) {
+	                       std::u8string_view dirname) const {
 		auto const json_filename = db_root / "nfo"sv / make_json(dirname);
 
 		std::error_code ec{};

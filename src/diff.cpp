@@ -54,7 +54,8 @@ namespace movies {
 						ratio = (std::max)(ratio, next_ratio);
 					}
 
-					if (ratio < 0.8) continue;
+					// This trully is a magic number
+					if (ratio < 0.8) continue;  // NOLINT
 
 					close_calls.push_back({ratio, video, info});
 				}
@@ -62,7 +63,8 @@ namespace movies {
 
 			std::sort(close_calls.begin(), close_calls.end(),
 			          std::greater<diff>{});
-			std::unordered_set<string> used_infos, used_videos;
+			std::unordered_set<string> used_infos;
+			std::unordered_set<string> used_videos;
 
 			vector<diff> result{};
 			for (auto& D : close_calls) {

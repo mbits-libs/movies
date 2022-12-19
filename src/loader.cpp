@@ -46,7 +46,8 @@ namespace movies {
 			return get_ref(mp4, id);
 		}
 
-		map<string, movie_info> known_movies(fs::path const& db_root, bool store_updates) {
+		map<string, movie_info> known_movies(fs::path const& db_root,
+		                                     bool store_updates) {
 			map<string, movie_info> result{};
 			alpha_2_aliases aka{};
 			aka.load(db_root);
@@ -57,24 +58,25 @@ namespace movies {
 			fs::recursive_directory_iterator iterator{root, ec};
 			if (ec) return result;
 
+			static constexpr auto ext = u8".json"sv;
 			for (auto&& entry : iterator) {
-				if (entry.path().extension().generic_u8string() != u8".json")
+				if (entry.path().extension().generic_u8string() != ext)
 					continue;
-				auto json_path = entry.path();
+				auto const& json_path = entry.path();
 				auto u8ident = fs::relative(json_path, root).generic_u8string();
-				u8ident = u8ident.substr(0, u8ident.length() - 5);
+				u8ident = u8ident.substr(0, u8ident.length() - ext.length());
 
 				movie_info info{};
-				std::string debug {};
-				auto const load_result = info.load(db_root, u8ident, aka, debug);
+				std::string debug{};
+				auto const load_result =
+				    info.load(db_root, u8ident, aka, debug);
 				if (load_result == json::conv_result::failed) continue;
 				if (load_result == json::conv_result::updated) {
 					if (store_updates) {
 						info.store(db_root, u8ident);
 						fputc('.', stdout);
 						fflush(stdout);
-					}
-					else {
+					} else {
 						fprintf(stdout, "%.*s:%s\n",
 						        static_cast<int>(u8ident.size()),
 						        reinterpret_cast<char const*>(u8ident.data()),
@@ -96,9 +98,8 @@ namespace movies {
 
 			for (auto&& entry : iterator) {
 				auto const ext = entry.path().extension().u8string();
-				if (ext != u8".mp4"sv && ext != u8".mkv")
-					continue;
-				auto movie_path = entry.path();
+				if (ext != u8".mp4"sv && ext != u8".mkv") continue;
+				auto const& movie_path = entry.path();
 				auto u8ident =
 				    fs::relative(movie_path, videos_root).generic_u8string();
 				u8ident = u8ident.substr(0, u8ident.length() - ext.length());
@@ -112,9 +113,12 @@ namespace movies {
 
 		vector<string> split_simple(vector<string>& infos,
 		                            vector<string>& videos) {
-			vector<string> result, infos_left, videos_left;
+			vector<string> result;
+			vector<string> infos_left;
+			vector<string> videos_left;
 
-			auto it_infos = infos.begin(), it_videos = videos.begin();
+			auto it_infos = infos.begin();
+			auto it_videos = videos.begin();
 
 			while (it_infos != infos.end() || it_videos != videos.end()) {
 				if (it_infos == infos.end()) {
@@ -183,8 +187,8 @@ namespace movies {
 		          typename Compare,
 		          typename Allocator>
 		auto keys_of(std::map<Key, Value, Compare, Allocator> const& map) {
-			using ReboudAllocator =
-			    std::allocator_traits<Allocator>::template rebind_alloc<Key>;
+			using ReboudAllocator = typename std::allocator_traits<
+			    Allocator>::template rebind_alloc<Key>;
 			std::vector<Key, ReboudAllocator> result{};
 			result.reserve(map.size());
 			std::transform(
