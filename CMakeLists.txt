@@ -78,6 +78,12 @@ target_link_libraries(movies PUBLIC ${JSON_TGT} io fmt::fmt date::date)
 if (TARGET nav)
     target_link_libraries(movies PUBLIC nav)
     target_compile_definitions(movies PUBLIC MOVIES_HAS_NAVIGATOR)
+elseif(TARGET tangle)
+    target_link_libraries(movies PUBLIC tangle)
+    target_compile_definitions(movies PUBLIC MOVIES_HAS_NAVIGATOR)
+elseif(TARGET tangle::tangle)
+    target_link_libraries(movies PUBLIC tangle::tangle)
+    target_compile_definitions(movies PUBLIC MOVIES_HAS_NAVIGATOR)
 endif()
 
 ##################################################################
