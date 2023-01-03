@@ -142,8 +142,9 @@ namespace movies {
 
 		json::conv_result merge_one_prefixed(std::u8string& prev,
 		                                     std::u8string const& next) {
+			auto const changed = prev != next;
 			prev = next;
-			return json::conv_result::ok;
+			return changed ? json::conv_result::updated : json::conv_result::ok;
 		}
 
 		json::conv_result merge_one_prefixed(title_info& prev,
