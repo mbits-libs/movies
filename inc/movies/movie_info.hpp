@@ -66,8 +66,10 @@ namespace movies {
 				if (it != items.end()) return it;
 			}
 
+			auto it = items.find({});
+			if (it != items.end()) return it;
 			if (!has_en_US || !has_en) return fallback();
-			return items.find({});
+			return items.end();
 		}
 
 		template <typename Op>
