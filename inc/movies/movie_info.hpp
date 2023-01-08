@@ -178,13 +178,13 @@ namespace movies {
 		static opt_seconds from_http_date(std::string const&);
 	};
 
-	using opt_offset = std::optional<uint64_t>;
+	using opt_offset = std::optional<uint32_t>;
 
 #define VIDEO_MARKER_TYPE_X(X) \
-	X(bookmark)          \
-	X(recap)             \
-	X(credits)           \
-	X(credits_scene)     \
+	X(bookmark)                \
+	X(recap)                   \
+	X(credits)                 \
+	X(credits_scene)           \
 	X(chapter)
 
 	enum class marker_type {
@@ -194,16 +194,15 @@ namespace movies {
 	};
 
 	struct video_marker {
-		marker_type type{};
-		uint64_t start{};
+		marker_type type{marker_type::bookmark};
+		uint32_t start{};
 		opt_offset stop{};
 		std::optional<json::string> comment{};
 
 		bool operator==(video_marker const&) const noexcept = default;
 		bool equiv(video_marker const& rhs) const noexcept {
 			// update comment on merge...
-			return type == rhs.type && start == rhs.start &&
-			       stop == rhs.stop;
+			return type == rhs.type && start == rhs.start && stop == rhs.stop;
 		}
 		auto operator<=>(video_marker const& rhs) const noexcept {
 			if (auto comp = start <=> rhs.start; comp != 0) return comp;
@@ -220,6 +219,8 @@ namespace movies {
 		opt_offset credits{};
 		opt_offset end_of_watch{};
 		std::vector<video_marker> markers{};
+
+		bool operator==(video_info const&) const noexcept = default;
 
 		json::node to_json() const;
 		json::conv_result from_json(json::map const& data, std::string& dbg);
