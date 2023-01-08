@@ -1299,6 +1299,7 @@ namespace movies {
 		STORE(credits);
 		STORE(end_of_watch);
 		STORE(markers);
+		if (result.empty()) return {};
 		return result;
 	}
 
