@@ -316,10 +316,10 @@ namespace movies {
 		}
 
 		template <typename Value>
-		concept has_equiv =
-		    requires(Value const& old_data, Value const& new_data) {
-			    { old_data.equiv(new_data) } -> std::convertible_to<bool>;
-		    };
+		concept has_equiv = requires(Value const& old_data,
+		                             Value const& new_data) {
+			{ old_data.equiv(new_data) } -> std::convertible_to<bool>;
+		};
 		template <typename Value>
 		bool equiv(Value const& old_data, Value const& new_data) {
 			if constexpr (has_equiv<Value>)
@@ -340,8 +340,7 @@ namespace movies {
 					return old_data;
 				// update comment, move to new position
 				return new_data;
-			}
-			else
+			} else
 				return old_data;
 		}
 
