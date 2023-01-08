@@ -17,6 +17,7 @@
 #include <movies/opt.hpp>
 #include <numeric>
 #include <set>
+#include <utility>
 
 #ifdef _MSC_VER
 namespace fmt {
@@ -29,6 +30,16 @@ namespace movies {
 		using namespace std::literals;
 #ifdef MOVIES_HAS_NAVIGATOR
 		using namespace tangle;
+#endif
+
+#if __cpp_lib_to_underlying >= 202102L
+		using std::to_underlying;
+#else
+		template <class Enum>
+		[[nodiscard]] constexpr std::underlying_type_t<Enum> to_underlying(
+		    Enum _Value) noexcept {
+			return static_cast<std::underlying_type_t<Enum>>(_Value);
+		}
 #endif
 
 		template <json::NodeType... Kind>
@@ -437,8 +448,7 @@ namespace movies {
 			for (auto const& marker : marker_types)
 				if (marker.name == name) return marker.type;
 			return static_cast<marker_type>(
-			    std::to_underlying(
-			        marker_types[std::size(marker_types) - 1].type) +
+			    to_underlying(marker_types[std::size(marker_types) - 1].type) +
 			    1);
 		}
 
@@ -1258,7 +1268,7 @@ namespace movies {
 		json::map result{};
 		auto name = marker_name(type);
 		if (name.empty())
-			::json::store(result, u8"type"sv, std::to_underlying(type));
+			::json::store(result, u8"type"sv, to_underlying(type));
 		else
 			::json::store(result, u8"type"sv,
 			              json::string{name.data(), name.size()});
