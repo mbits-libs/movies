@@ -315,9 +315,39 @@ namespace movies {
 			return copy;
 		}
 
-		json::conv_result merge_arrays(
-		    std::vector<std::u8string>& old_data,
-		    std::vector<std::u8string> const& new_data) {
+		template <typename Value>
+		concept has_equiv =
+		    requires(Value const& old_data, Value const& new_data) {
+			    { old_data.equiv(new_data) } -> std::convertible_to<bool>;
+		    };
+		template <typename Value>
+		bool equiv(Value const& old_data, Value const& new_data) {
+			if constexpr (has_equiv<Value>)
+				return old_data.equiv(new_data);
+			else
+				return old_data == new_data;
+		}
+
+		template <typename Expected, typename Value>
+		static constexpr auto is_sized =
+		    std::is_same_v<Value, std::pair<Expected, size_t>>;
+		template <typename Value>
+		Value const& select_equiv(Value const& old_data,
+		                          Value const& new_data) {
+			if constexpr (is_sized<video_marker, Value>) {
+				// keep old position
+				if (old_data.first.comment == new_data.first.comment)
+					return old_data;
+				// update comment, move to new position
+				return new_data;
+			}
+			else
+				return old_data;
+		}
+
+		template <typename Value>
+		json::conv_result merge_arrays(std::vector<Value>& old_data,
+		                               std::vector<Value> const& new_data) {
 			auto old_ = indexed(old_data);
 			auto new_ = indexed(new_data, old_.size());
 			auto index_old = size_t{0};
@@ -325,7 +355,7 @@ namespace movies {
 			auto const size_old = old_.size();
 			auto const size_new = new_.size();
 
-			using mid_pair = std::pair<std::u8string, size_t>;
+			using mid_pair = std::pair<Value, size_t>;
 			std::vector<mid_pair> midway{};
 			while (index_old < size_old || index_new < size_new) {
 				if (index_old == size_old) {
@@ -349,8 +379,8 @@ namespace movies {
 				auto const& older = old_[index_old];
 				auto const& newer = new_[index_new];
 
-				if (older.first == newer.first) {
-					midway.push_back(older);
+				if (equiv(older.first, newer.first)) {
+					midway.push_back(select_equiv(older, newer));
 
 					++index_old;
 					++index_new;
@@ -372,7 +402,7 @@ namespace movies {
 				                 return lhs.second < rhs.second;
 			                 });
 
-			std::vector<std::u8string> final{};
+			std::vector<Value> final{};
 			final.reserve(midway.size());
 			std::transform(std::make_move_iterator(midway.begin()),
 			               std::make_move_iterator(midway.end()),
@@ -386,6 +416,31 @@ namespace movies {
 			}
 
 			return json::conv_result::ok;
+		}
+
+		struct marker_type_str {
+			marker_type type;
+			std::u8string_view name;
+		};
+		static constexpr marker_type_str marker_types[] = {
+#define X_MARKER_TYPE(NAME) {marker_type::NAME, u8## #NAME##sv},
+		    VIDEO_MARKER_TYPE_X(X_MARKER_TYPE)
+#undef X_MARKER_TYPE
+		};
+
+		constexpr std::u8string_view marker_name(marker_type type) {
+			for (auto const& marker : marker_types)
+				if (marker.type == type) return marker.name;
+			return {};
+		}
+
+		constexpr marker_type marker_from_name(std::u8string_view name) {
+			for (auto const& marker : marker_types)
+				if (marker.name == name) return marker.type;
+			return static_cast<marker_type>(
+			    std::to_underlying(
+			        marker_types[std::size(marker_types) - 1].type) +
+			    1);
 		}
 
 #define TWC(fld) \
@@ -1200,6 +1255,68 @@ namespace movies {
 		return std::nullopt;
 	}
 
+	json::node video_marker::to_json() const {
+		json::map result{};
+		auto name = marker_name(type);
+		if (name.empty())
+			::json::store(result, u8"type"sv, std::to_underlying(type));
+		else
+			::json::store(result, u8"type"sv,
+			              json::string{name.data(), name.size()});
+		STORE(start);
+		STORE(stop);
+		STORE(comment);
+		return result;
+	}
+
+	json::conv_result video_marker::from_json(json::map const& data,
+	                                          std::string& dbg) {
+		auto result = json::conv_result::ok;
+		auto json_type_str = json::cast<json::string>(data, u8"type");
+		auto json_type_int = json::cast<long long>(data, u8"type");
+		if (!json_type_str && !json_type_int) {
+			result = json::conv_result::failed;
+			return result;
+		}
+		if (json_type_str) {
+			type = marker_from_name(*json_type_str);
+		} else {
+			type = static_cast<marker_type>(*json_type_int);
+			auto name = marker_name(type);
+			if (!name.empty()) {
+				dbg.append("\n- Numeric marker type has a known name"sv);
+				result = json::conv_result::updated;
+			}
+		}
+		LOAD_EX(::json::load_zero(data, NAMED(start), dbg));
+		LOAD(stop);
+		LOAD(comment);
+		return result;
+	}
+
+	json::node video_info::to_json() const {
+		json::map result{};
+		STORE(credits);
+		STORE(end_of_watch);
+		STORE(markers);
+		return result;
+	}
+
+	json::conv_result video_info::from_json(json::map const& data,
+	                                        std::string& dbg) {
+		auto result = json::conv_result::ok;
+		LOAD(credits);
+		LOAD(end_of_watch);
+		LOAD(markers);
+		return result;
+	}
+
+	MERGE_BEGIN(video_info)
+	MERGE_OPT(credits);
+	MERGE_OPT(end_of_watch);
+	MERGE_ARRAY(markers);
+	MERGE_END()
+
 	void store_tr_strings(
 	    json::map& dst,
 	    std::u8string_view const& prefix,
@@ -1235,6 +1352,7 @@ namespace movies {
 		STORE(year);
 		STORE(runtime);
 		STORE(rating);
+		STORE(video);
 		return result;
 	}
 
@@ -1364,6 +1482,7 @@ namespace movies {
 		LOAD(year);
 		LOAD(runtime);
 		LOAD(rating);
+		LOAD(video);
 
 		bool has_unk_original = false;
 		bool has_other_original = false;
@@ -1405,6 +1524,7 @@ namespace movies {
 	MERGE_OPT(year);
 	MERGE_OPT(runtime);
 	MERGE_OPT(rating);
+	MERGE_OBJ(video);
 	MERGE_END()
 
 	void movie_info::add_tag(std::u8string_view tag) {
