@@ -105,7 +105,11 @@ class CodeClasses(ClassVisitor):
             )
             for prop in obj.props:
                 ext_attrs = attribute_ext_attrs(prop.ext_attrs)
-                or_value, load_as = (ext_attrs["or_value"], ext_attrs["load_as"])
+                or_value, load_as, empty = (
+                    ext_attrs["or_value"],
+                    ext_attrs["load_as"],
+                    ext_attrs["empty"],
+                )
 
                 if load_as is not None:
                     print(
@@ -113,7 +117,13 @@ class CodeClasses(ClassVisitor):
                         file=self.output,
                     )
                     continue
-                op = "load_or_value" if or_value else "load"
+                op = (
+                    "load_or_value"
+                    if or_value
+                    else "load_zero"
+                    if empty == "allow"
+                    else "load"
+                )
                 print(
                     f'    OP(v{self.version}::{op}(data, u8"{prop.name}", {prop.name}, dbg));',
                     file=self.output,

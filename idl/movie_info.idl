@@ -77,7 +77,7 @@ interface video_info {
 
 [merge(none), spaceship]
 interface video_marker {
-    attribute uint32_t start;
+    [empty(allow)] attribute uint32_t start;
     attribute uint32_t? stop;
     attribute string? comment;
     [default="marker_type::bookmark"] attribute marker_type type;
