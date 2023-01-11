@@ -1,0 +1,99 @@
+[merge_with("prefer_title|which_title"), load_postproc]
+interface movie_info {
+    attribute unsigned version;
+    attribute sequence<string> refs;
+    attribute translatable<title_info> title;
+    attribute sequence<string> genres;
+    attribute sequence<string> countries;
+    [or_value] attribute sequence<string> age;
+    attribute sequence<string> tags;
+    attribute sequence<string> episodes;
+    attribute crew_info crew;
+    attribute translatable<string> tagline;
+    attribute translatable<string> summary;
+    attribute image_info image;
+    attribute dates_info dates;
+    attribute unsigned? year;
+    attribute unsigned? runtime;
+    attribute unsigned? rating;
+    attribute video_info video;
+
+    [throws, mutable] void add_tag(string_view tag);
+    [throws, mutable] void remove_tag(string_view tag);
+    bool has_tag(string_view tag);
+    [throws] bool store([in] path db_root, string_view key);
+    [throws, mutable] conv_result load([in] path db_root, string_view key, [in] alpha_2_aliases aka, [in, out] ascii dbg);
+    [throws, mutable] bool map_countries([in] alpha_2_aliases aka);
+    [throws, mutable, guard=MOVIES_HAS_NAVIGATOR]
+    bool offline_images([in] path root, [out] navigator nav, [in] uri referrer, string_view dirname);
+};
+
+[from=node, merge=manual, merge_with("prefer_title|which_title"), load_postproc, merge_postproc]
+interface title_info {
+    attribute string text;
+    attribute string? sort;
+    attribute bool original;
+};
+
+[merge=manual, load_postproc]
+interface crew_info {
+    attribute sequence<role_info> directors;
+    attribute sequence<role_info> writers;
+    attribute sequence<role_info> cast;
+    attribute sequence<person_name> names;
+};
+
+[from=node, merge=none, spaceship]
+interface role_info {
+    attribute long long id;
+    attribute string? contribution;
+};
+
+[from=node, merge=none, spaceship]
+interface person_name {
+    attribute string name;
+    attribute sequence<string> refs;
+};
+
+interface image_info {
+    attribute string? highlight;
+    attribute poster_info poster;
+    attribute sequence<string> gallery;
+};
+
+interface poster_info {
+    attribute string? small;
+    attribute string? large;
+    attribute string? normal;
+};
+
+interface dates_info {
+    attribute timestamp? published;
+    attribute timestamp? stream;
+    attribute timestamp? poster;
+    [static, throws] timestamp? from_http_date([in] ascii header);
+};
+
+interface video_info {
+    attribute uint32_t? credits;
+    attribute uint32_t? end_of_watch;
+    attribute sequence<video_marker> markers;
+};
+
+[merge(none), spaceship]
+interface video_marker {
+    attribute uint32_t start;
+    attribute uint32_t? stop;
+    attribute string? comment;
+    [default="marker_type::bookmark"] attribute marker_type type;
+
+    bool equiv([in] video_marker rhs);
+};
+
+enum marker_type {
+	"bookmark",
+	"recap",
+	"credits",
+	"credits_scene",
+	"chapter",
+};

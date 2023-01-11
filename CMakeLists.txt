@@ -39,6 +39,7 @@ elseif (NOT TARGET mbits-json::json)
     find_package(mbits-json REQUIRED CONFIG)
     set(JSON_TGT mbits-json::json)
 endif()
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 ##################################################################
 # IO
@@ -59,20 +60,52 @@ set(MOVIES_SRCS
     inc/movies/diff.hpp
     inc/movies/fwd.hpp
     inc/movies/loader.hpp
-    inc/movies/movie_info.hpp
+    inc/movies/types.hpp
     inc/movies/opt.hpp
 
     src/db_info.cpp
     src/diff.cpp
     src/difflib.hpp
     src/loader.cpp
-    src/movie_info.cpp
+    src/movie_info/impl_array.inl
+    src/movie_info/impl_translatable.inl
+    src/movie_info/impl.cpp
+    src/movie_info/impl.hpp
+    src/movie_info/movie_info.cpp
+    src/movie_info/offline_images.cpp
+    src/movie_info/person_info.hpp
 )
 
+set(GEN_SRCS
+    ${CMAKE_CURRENT_BINARY_DIR}/inc/movies/movie_info.hpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/movie_info_generated.cpp
+)
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${MOVIES_SRCS})
+source_group(TREE ${CMAKE_CURRENT_BINARY_DIR} FILES ${GEN_SRCS} PREFIX gen)
 
-add_library(movies STATIC ${MOVIES_SRCS})
-target_include_directories(movies PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inc")
+
+add_custom_command(
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/inc/movies/movie_info.hpp
+        ${CMAKE_CURRENT_BINARY_DIR}/src/movie_info_generated.cpp
+    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-api.py ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info.idl ${CMAKE_CURRENT_BINARY_DIR}
+    DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-api.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info.idl
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/cpp/code.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/cpp/header.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/cpp/common.py
+    VERBATIM)
+
+
+add_library(movies STATIC ${MOVIES_SRCS} ${GEN_SRCS})
+target_include_directories(movies
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/inc"
+        "${CMAKE_CURRENT_BINARY_DIR}/inc"
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
 target_link_libraries(movies PUBLIC ${JSON_TGT} io fmt::fmt date::date)
 
 if (TARGET nav)

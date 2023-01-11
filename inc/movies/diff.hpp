@@ -9,7 +9,9 @@
 #include "fwd.hpp"
 
 namespace movies {
-	struct movie_info;
+	inline namespace v1 {
+		struct movie_info;
+	}
 
 	struct diff {
 		double ratio;

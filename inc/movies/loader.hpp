@@ -5,7 +5,7 @@
 
 #include <filesystem>
 #include "fwd.hpp"
-#include "movie_info.hpp"
+#include <movies/movie_info.hpp>
 
 namespace fs = std::filesystem;
 
