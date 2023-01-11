@@ -20,6 +20,10 @@ class ClassVisitor:
             object.on_class_visitor(self)
         self.all_visited()
 
+    def visit_one(self, object: "WidlClass"):
+        object.on_class_visitor(self)
+        return self
+
     def all_visited(self):
         pass
 

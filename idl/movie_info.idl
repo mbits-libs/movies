@@ -21,11 +21,6 @@ interface movie_info {
     [throws, mutable] void add_tag(string_view tag);
     [throws, mutable] void remove_tag(string_view tag);
     bool has_tag(string_view tag);
-    [throws] bool store([in] path db_root, string_view key);
-    [throws, mutable] conv_result load([in] path db_root, string_view key, [in] alpha_2_aliases aka, [in, out] ascii dbg);
-    [throws, mutable] bool map_countries([in] alpha_2_aliases aka);
-    [throws, mutable, guard=MOVIES_HAS_NAVIGATOR]
-    bool offline_images([in] path root, [out] navigator nav, [in] uri referrer, string_view dirname);
 };
 
 [from=node, merge=manual, merge_with("prefer_title|which_title"), load_postproc, merge_postproc]
@@ -86,8 +81,6 @@ interface video_marker {
     attribute uint32_t? stop;
     attribute string? comment;
     [default="marker_type::bookmark"] attribute marker_type type;
-
-    bool equiv([in] video_marker rhs);
 };
 
 enum marker_type {

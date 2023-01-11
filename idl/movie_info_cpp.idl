@@ -1,0 +1,11 @@
+partial interface movie_info {
+    [throws] bool store([in] path db_root, string_view key);
+    [throws, mutable] conv_result load([in] path db_root, string_view key, [in] alpha_2_aliases aka, [in, out] ascii dbg);
+    [throws, mutable] bool map_countries([in] alpha_2_aliases aka);
+    [throws, mutable, guard=MOVIES_HAS_NAVIGATOR]
+    bool offline_images([in] path root, [out] navigator nav, [in] uri referrer, string_view dirname);
+};
+
+partial interface video_marker {
+    bool equiv([in] video_marker rhs);
+};

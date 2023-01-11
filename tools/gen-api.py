@@ -1,6 +1,6 @@
 from widl.printers.cpp import print_code, print_header, reorder_types
 from widl.model import *
-from widl.parser import parse
+from widl.parser import parse_all
 import sys
 import os
 from contextlib import contextmanager
@@ -16,13 +16,13 @@ def open_file(path: str):
         yield output
 
 
-idl_path = sys.argv[1]
-root = sys.argv[2]
+idl_paths = sys.argv[2:]
+root = sys.argv[1]
 code_path = os.path.join(root, "src", "movie_info_generated.cpp")
 header_path = os.path.join(root, "inc", "movies", "movie_info.hpp")
 
 
-objects = parse(idl_path)
+objects = parse_all(idl_paths)
 reorder_types(objects)
 with open_file(code_path) as output:
     print_code(objects, output, "<movies/movie_info.hpp>", VERSION)

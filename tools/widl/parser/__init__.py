@@ -3,6 +3,7 @@ import sys
 import string
 from .types import file_pos, Token, partial_token, token
 from ..model import (
+    ClassVisitor,
     WidlClass,
     WidlEnum,
     WidlInterface,
@@ -329,9 +330,8 @@ def _read_interface(
 
 
 def _is_partial(parser: _Parser):
-    tok = parser.curr
-    if tok.value == ident("partial"):
-        parser.next()
+    if parser.peek.value == ident("partial"):
+        parser.consume(ident("partial"))
         return True
     return False
 
@@ -359,10 +359,50 @@ def _top_level_items(parser: _Parser) -> list[WidlClass]:
         klass = reader(parser, name.value.code, iface_ext_attrs, name.pos)
         klass.partial = partial
         result.append(klass)
+        if partial and type.value.code != "interface":
+            print(f"{type.pos}: error: only interfaces can be partial")
+            raise RuntimeError()
 
         parser.consume(op("}"))
         parser.consume(op(";"))
     return result
+
+
+class GetKind(ClassVisitor):
+    def __init__(self):
+        self.kind = None
+
+    def on_enum(self, _: WidlEnum):
+        self.kind = "enum"
+
+    def on_interface(self, _: WidlInterface):
+        self.kind = "interface"
+
+
+def _get_kind(object: WidlClass):
+    return GetKind().visit_one(object).kind
+
+
+def _merge(prev: WidlInterface, next: WidlInterface):
+    props = set(prop.name for prop in prev.props)
+    ops = set(op.name for op in prev.ops)
+    for prop in next.props:
+        if prop.name in props:
+            print(
+                f"{next.pos}: error: definition of {prev.name}.{prop.name} found in two places"
+            )
+            print(f"{prev.pos}: info: see previous definition")
+            raise RuntimeError()
+        prev.props.append(prop)
+    for op in next.ops:
+        if op.name in ops:
+            print(
+                f"{next.pos}: error: definition of {prev.name}.{op.name} found in two places"
+            )
+            print(f"{prev.pos}: info: see previous definition")
+            raise RuntimeError()
+        prev.ops.append(op)
+    prev.ext_attrs.extend(next.ext_attrs)
 
 
 def top_level_items(tokens: list[token]) -> list[WidlClass]:
@@ -371,3 +411,33 @@ def top_level_items(tokens: list[token]) -> list[WidlClass]:
 
 def parse(path: str):
     return top_level_items(tokenize(path))
+
+
+def parse_all(paths: list[str]) -> list[WidlClass]:
+    known: dict[str, tuple[str, WidlClass]] = {}
+    order: list[str] = []
+    for path in paths:
+        local = parse(path)
+        for object in local:
+            kind = _get_kind(object)
+            prev = known.get(object.name)
+            if prev is None:
+                known[object.name] = (kind, object)
+                order.append(object.name)
+                continue
+            prev_kind, prev_object = prev
+            if prev_kind != kind:
+                print(
+                    f"{object.pos}: error: `{object.name}' was `{prev_kind}' and now is `{kind}'"
+                )
+                print(f"{prev_object.pos}: note: see previous definition")
+                raise RuntimeError()
+            if not prev_object.partial and not object.partial:
+                print(
+                    f"{object.pos}: error: neither `{object.name}' was declared partial"
+                )
+                print(f"{prev_object.pos}: note: see previous definition")
+                raise RuntimeError()
+            _merge(prev_object, object)
+
+    return [known[name][1] for name in order]

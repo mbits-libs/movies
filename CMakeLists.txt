@@ -88,10 +88,11 @@ add_custom_command(
     OUTPUT
         ${CMAKE_CURRENT_BINARY_DIR}/inc/movies/movie_info.hpp
         ${CMAKE_CURRENT_BINARY_DIR}/src/movie_info_generated.cpp
-    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-api.py ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info.idl ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-api.py ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info.idl ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info_cpp.idl
     DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-api.py
         ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info.idl
+        ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info_cpp.idl
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/cpp/code.py
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/cpp/header.py
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/cpp/common.py
