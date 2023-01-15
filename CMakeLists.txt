@@ -21,6 +21,8 @@ else()
 endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 list(APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR})
@@ -108,6 +110,8 @@ target_include_directories(movies
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 target_link_libraries(movies PUBLIC ${JSON_TGT} io fmt::fmt date::date)
+set_target_properties(movies PROPERTIES
+    OUTPUT_NAME movies-dev)
 
 if (TARGET nav)
     target_link_libraries(movies PUBLIC nav)
@@ -127,5 +131,6 @@ endif()
 if (MOVIES_INSTALL)
   install(TARGETS movies io)
   install(DIRECTORY inc/movies DESTINATION include)
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/inc/movies DESTINATION include)
   install(DIRECTORY inc/io DESTINATION include)
 endif()

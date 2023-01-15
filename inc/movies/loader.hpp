@@ -4,14 +4,14 @@
 #pragma once
 
 #include <filesystem>
-#include "fwd.hpp"
 #include <movies/movie_info.hpp>
+#include "fwd.hpp"
 
 namespace fs = std::filesystem;
 
 namespace movies {
 	struct file_ref {
-		string id;
+		fs_string id;
 		fs::file_time_type mtime;
 
 		bool operator==(file_ref const&) const noexcept = default;

@@ -25,56 +25,48 @@ namespace movies::v1 {
 	using namespace tangle;
 
 	namespace {
-		std::u8string as_u8(std::string_view utf8byAnotherName) {
-			return {reinterpret_cast<char8_t const*>(utf8byAnotherName.data()),
-			        utf8byAnotherName.size()};
-		}
-
-		std::string as_platform(std::u8string_view utf) {
-			return {reinterpret_cast<char const*>(utf.data()), utf.size()};
-		}
-
-		void rebase_img(std::optional<std::u8string>& dst,
+		void rebase_img(std::optional<string_type>& dst,
 		                uri const& base,
-		                std::map<std::u8string, uri>& mapping,
-		                std::u8string_view dirname,
-		                std::u8string_view filename) {
+		                std::map<string_type, uri>& mapping,
+		                string_view_type dirname,
+		                std::string_view filename) {
 			if (dst && dst->empty()) dst = std::nullopt;
 			if (!dst) return;
 
-			auto src = uri::canonical(uri{as_platform(*dst)}, base);
+			auto src =
+			    uri::canonical(uri{as_ascii_string(std::move(*dst))}, base);
 			auto ext = fs::path{src.path()}.extension().u8string();
 			if (ext.empty() || ext == u8".jpeg"sv) ext = u8".jpg"sv;
-			std::u8string result{};
+			string_type result{};
 			result.reserve(dirname.length() + filename.length() + ext.length() +
 			               1);
 			result.append(dirname);
 			result.push_back('/');
-			result.append(filename);
-			result.append(ext);
+			result.append(as_view(filename));
+			result.append(as_view(ext));
 			dst = std::move(result);
 			mapping[*dst] = src;
 		}
 
-		std::map<std::u8string, uri> rebase_all(movies::image_info& self,
-		                                        std::u8string_view dirname,
-		                                        uri const& base) {
-			std::map<std::u8string, uri> mapping;
+		std::map<string_type, uri> rebase_all(movies::image_info& self,
+		                                      string_view_type dirname,
+		                                      uri const& base) {
+			std::map<string_type, uri> mapping;
 
 			rebase_img(self.highlight, base, mapping, dirname,
-			           u8"01-highlight"sv);
+			           "01-highlight"sv);
 			rebase_img(self.poster.small, base, mapping, dirname,
-			           u8"00-poster-0_small"sv);
+			           "00-poster-0_small"sv);
 			rebase_img(self.poster.normal, base, mapping, dirname,
-			           u8"00-poster-1_normal"sv);
+			           "00-poster-1_normal"sv);
 			rebase_img(self.poster.large, base, mapping, dirname,
-			           u8"00-poster-2_large"sv);
+			           "00-poster-2_large"sv);
 
 			size_t index{};
 			for (auto& image : self.gallery) {
-				std::optional<std::u8string> sure{std::move(image)};
+				std::optional<string_type> sure{std::move(image)};
 				rebase_img(sure, base, mapping, dirname,
-				           as_u8(fmt::format("02-gallery-{:02}"sv, index++)));
+				           fmt::format("02-gallery-{:02}"sv, index++));
 				if (sure) image = std::move(*sure);
 			}
 
@@ -93,7 +85,7 @@ namespace movies::v1 {
 	bool movie_info::offline_images(fs::path const& db_root,
 	                                nav::navigator& nav,
 	                                uri const& referrer,
-	                                std::u8string_view dirname) {
+	                                string_view_type dirname) {
 		auto mapping = rebase_all(image, dirname, uri::make_base(referrer));
 
 		auto const img_dir = db_root / "img"sv;

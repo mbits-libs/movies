@@ -9,37 +9,37 @@
 
 namespace movies::v1 {
 	namespace {
-		std::u8string make_json(std::u8string_view file_root) {
+		fs_string make_json(string_view_type file_root) {
 			static constexpr auto ext = u8".json"sv;
-			std::u8string result{};
+			fs_string result{};
 			result.reserve(file_root.length() + ext.length());
-			result.append(file_root);
+			result.append(as_fs_view(file_root));
 			result.append(ext);
 			return result;
 		}
 
 		template <typename String>
 		struct helper {
-			static inline String as_str(std::u8string_view str) {
+			static inline String as_str(string_view_type str) {
 				return String{str.data(), str.size()};
 			}
 		};
 
 		template <>
-		struct helper<std::u8string_view> {
-			static inline std::u8string_view as_str(
-			    std::u8string_view str) noexcept {
+		struct helper<string_view_type> {
+			static inline string_view_type as_str(
+			    string_view_type str) noexcept {
 				return str;
 			}
 		};
 
-		size_t calc_separators(char sep, std::u8string_view data, size_t max) {
+		size_t calc_separators(char sep, string_view_type data, size_t max) {
 			auto pos = data.find(sep);
 			decltype(pos) prev = 0;
 
 			size_t result = 1;
 
-			while (max && pos != std::u8string_view::npos) {
+			while (max && pos != string_view_type::npos) {
 				prev = pos + 1;
 				pos = data.find(sep, prev);
 				if (max != std::u8string::npos) --max;
@@ -52,7 +52,7 @@ namespace movies::v1 {
 
 		template <typename String>
 		std::vector<String> split_impl(char sep,
-		                               std::u8string_view data,
+		                               string_view_type data,
 		                               size_t max) {
 			std::vector<String> result{};
 
@@ -61,7 +61,7 @@ namespace movies::v1 {
 			auto pos = data.find(sep);
 			decltype(pos) prev = 0;
 
-			while (max && pos != std::u8string_view::npos) {
+			while (max && pos != string_view_type::npos) {
 				auto const view = data.substr(prev, pos - prev);
 				prev = pos + 1;
 				pos = data.find(sep, prev);
@@ -75,10 +75,10 @@ namespace movies::v1 {
 			return result;
 		}
 
-		std::vector<std::u8string> split_s(char sep,
-		                                   std::u8string_view data,
-		                                   size_t max = std::u8string::npos) {
-			return split_impl<std::u8string>(sep, data, max);
+		std::vector<string_type> split_s(char sep,
+		                                 string_view_type data,
+		                                 size_t max = string_view_type::npos) {
+			return split_impl<string_type>(sep, data, max);
 		}
 	}  // namespace
 
@@ -114,23 +114,23 @@ namespace movies::v1 {
 		return result;
 	}
 
-	void movie_info::add_tag(std::u8string_view tag) {
+	void movie_info::add_tag(string_view_type tag) {
 		auto it = std::find(tags.begin(), tags.end(), tag);
 		if (it == tags.end()) tags.emplace_back(tag.data(), tag.size());
 	}
 
-	void movie_info::remove_tag(std::u8string_view tag) {
+	void movie_info::remove_tag(string_view_type tag) {
 		auto it = std::find(tags.begin(), tags.end(), tag);
 		if (it != tags.end()) tags.erase(it);
 	}
 
-	bool movie_info::has_tag(std::u8string_view tag) const noexcept {
+	bool movie_info::has_tag(string_view_type tag) const noexcept {
 		auto it = std::find(tags.begin(), tags.end(), tag);
 		return (it != tags.end());
 	}
 
 	bool movie_info::store(fs::path const& db_root,
-	                       std::u8string_view key) const {
+	                       string_view_type key) const {
 		auto const json_filename = db_root / "nfo"sv / make_json(key);
 
 		std::error_code ec{};
@@ -149,7 +149,7 @@ namespace movies::v1 {
 	}
 
 	json::conv_result movie_info::load(fs::path const& db_root,
-	                                   std::u8string_view key,
+	                                   string_view_type key,
 	                                   alpha_2_aliases const& aka,
 	                                   std::string& dbg) {
 		auto const json_filename = db_root / "nfo"sv / make_json(key);
@@ -168,7 +168,7 @@ namespace movies::v1 {
 	}
 
 	bool movie_info::map_countries(alpha_2_aliases const& aka) {
-		std::vector<std::u8string> mapped_countries{};
+		std::vector<string_type> mapped_countries{};
 		mapped_countries.reserve(countries.size());
 		for (auto const& list : countries) {
 			auto items = split_s('/', list);

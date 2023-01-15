@@ -9,9 +9,9 @@ namespace movies::v1 {
 	if (auto cmp = lhs.fld <=> rhs.fld; cmp != 0) return cmp < 0
 
 		struct person_info_t {
-			std::optional<std::u8string> name;
-			std::map<std::u8string, std::u8string> refs;
-			std::optional<std::u8string> contribution;
+			std::optional<string_type> name;
+			std::map<string_type, string_type> refs;
+			std::optional<string_type> contribution;
 			size_t original_position{};
 			bool from_existing{};
 
@@ -30,13 +30,13 @@ namespace movies::v1 {
 				if (!name) {
 					return (std::numeric_limits<long long>::max)();
 				}
-				std::vector<std::u8string> reflist{};
+				std::vector<string_type> reflist{};
 				reflist.reserve(refs.size());
 				for (auto const& [key, value] : refs) {
 					if (value.empty()) {
 						reflist.push_back(key);
 					} else {
-						std::u8string ref{};
+						string_type ref{};
 						ref.reserve(key.length() + value.length() + 1);
 						ref.append(key);
 						ref.push_back(':');
@@ -80,9 +80,9 @@ namespace movies::v1 {
 					if (it != names.end()) {
 						dst.name = it->name;
 						for (auto const& ref : it->refs) {
-							auto const view = std::u8string_view{ref};
+							auto const view = string_view_type{ref};
 							auto const pos = ref.find(':');
-							if (pos == std::u8string::npos) {
+							if (pos == string_type::npos) {
 								dst.refs[ref].clear();
 							} else {
 								dst.refs[ref.substr(0, pos)] =

@@ -10,8 +10,8 @@ namespace movies::v1 {
 	json::node title_info::to_json() const {
 		std::vector<std::pair<json::string, json::node>> values;
 		values.reserve(3);
-		values.emplace_back(u8"text", text);
-		if (sort) values.emplace_back(u8"sort", *sort);
+		values.emplace_back(u8"text", as_json_string_v(text));
+		if (sort) values.emplace_back(u8"sort", as_json_string_v(*sort));
 		if (original) values.emplace_back(u8"original", true);
 
 		if (values.empty()) return {};
@@ -27,7 +27,7 @@ namespace movies::v1 {
 		auto map = cast<json::map>(data);
 
 		if (json_text) {
-			text = *json_text;
+			text = as_string_v(*json_text);
 			sort = std::nullopt;
 			original = false;
 		} else if (map) {
@@ -42,7 +42,7 @@ namespace movies::v1 {
 			OP(v1::load(data, u8"sort", sort, dbg));
 			OP(v1::load(data, u8"original", original, dbg));
 			if (!text) return json::conv_result::opt;
-			this->text = *text;
+			this->text = as_string(std::move(*text));
 		} else {
 			return json::conv_result::opt;
 		}
@@ -132,7 +132,7 @@ namespace movies::v1 {
 	json::conv_result crew_info::load_postproc(std::string& dbg) {
 		long long id{};
 		for (auto const& person : names) {
-			if (person.name == u8"N/A"sv) {
+			if (person.name == as_view("N/A"sv)) {
 				break;
 			}
 			++id;
@@ -162,7 +162,7 @@ namespace movies::v1 {
 
 	json::node role_info::to_json() const {
 		if (!contribution) return id;
-		return json::array{id, *contribution};
+		return json::array{id, as_json_string_v(*contribution)};
 	}
 
 	json::conv_result role_info::from_json(json::node const& data,
@@ -184,7 +184,7 @@ namespace movies::v1 {
 				if (contrib->empty())
 					contribution = std::nullopt;
 				else
-					contribution = *contrib;
+					contribution = as_string_v(*contrib);
 				return json::conv_result::ok;
 			}
 		}
@@ -193,12 +193,12 @@ namespace movies::v1 {
 	}
 
 	json::node person_name::to_json() const {
-		if (refs.empty()) return name;
+		if (refs.empty()) return as_json_string_v(name);
 		json::array result{};
 		result.reserve(refs.size() + 1);
-		result.push_back(name);
+		result.push_back(as_json_string_v(name));
 		std::transform(refs.begin(), refs.end(), std::back_inserter(result),
-		               [](auto const& item) { return item; });
+		               [](auto const& item) { return as_json_string_v(item); });
 		return json::node{std::move(result)};
 	}
 
@@ -208,7 +208,7 @@ namespace movies::v1 {
 		auto arr = cast<json::array>(data);
 
 		if (str) {
-			name = *str;
+			name = as_string_v(*str);
 			refs.clear();
 			return json::conv_result::ok;
 		}
@@ -221,10 +221,10 @@ namespace movies::v1 {
 				if (!val) continue;
 				if (!name_set) {
 					name_set = true;
-					name = *val;
+					name = as_string_v(*val);
 					continue;
 				}
-				refs.push_back(*val);
+				refs.push_back(as_string_v(*val));
 			}
 			if (name_set) return json::conv_result::ok;
 		}

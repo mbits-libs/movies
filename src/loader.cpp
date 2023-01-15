@@ -30,15 +30,15 @@ namespace movies {
 			return result;
 		}
 
-		file_ref get_ref(fs::path const& path, string const& id) {
+		file_ref get_ref(fs::path const& path, fs_string const& id) {
 			return {id, get_mtime(path)};
 		}
 
-		file_ref info_ref(fs::path const& db_root, string const& id) {
+		file_ref info_ref(fs::path const& db_root, fs_string const& id) {
 			return get_ref(db_root / "nfo"sv / (id + u8".json"), id);
 		}
 
-		file_ref video_ref(fs::path const& videos_root, string const& id) {
+		file_ref video_ref(fs::path const& videos_root, fs_string const& id) {
 			auto mp4 = videos_root / (id + u8".mp4");
 			if (std::filesystem::exists(mp4)) return get_ref(mp4, id);
 			auto mkv = videos_root / (id + u8".mkv");
@@ -46,9 +46,9 @@ namespace movies {
 			return get_ref(mp4, id);
 		}
 
-		map<string, movie_info> known_movies(fs::path const& db_root,
-		                                     bool store_updates) {
-			map<string, movie_info> result{};
+		map<fs_string, movie_info> known_movies(fs::path const& db_root,
+		                                        bool store_updates) {
+			map<fs_string, movie_info> result{};
 			alpha_2_aliases aka{};
 			aka.load(db_root);
 
@@ -69,11 +69,11 @@ namespace movies {
 				movie_info info{};
 				std::string debug{};
 				auto const load_result =
-				    info.load(db_root, u8ident, aka, debug);
+				    info.load(db_root, as_view(u8ident), aka, debug);
 				if (load_result == json::conv_result::failed) continue;
 				if (load_result == json::conv_result::updated) {
 					if (store_updates) {
-						info.store(db_root, u8ident);
+						info.store(db_root, as_view(u8ident));
 						fputc('.', stdout);
 						fflush(stdout);
 					} else {
@@ -89,8 +89,8 @@ namespace movies {
 			return result;
 		}
 
-		vector<string> downloaded_movies(fs::path const& videos_root) {
-			vector<string> result{};
+		vector<fs_string> downloaded_movies(fs::path const& videos_root) {
+			vector<fs_string> result{};
 
 			std::error_code ec{};
 			fs::recursive_directory_iterator iterator{videos_root, ec};
@@ -111,11 +111,11 @@ namespace movies {
 			return result;
 		}
 
-		vector<string> split_simple(vector<string>& infos,
-		                            vector<string>& videos) {
-			vector<string> result;
-			vector<string> infos_left;
-			vector<string> videos_left;
+		vector<fs_string> split_simple(vector<fs_string>& infos,
+		                               vector<fs_string>& videos) {
+			vector<fs_string> result;
+			vector<fs_string> infos_left;
+			vector<fs_string> videos_left;
 
 			auto it_infos = infos.begin();
 			auto it_videos = videos.begin();
@@ -157,10 +157,10 @@ namespace movies {
 			return result;
 		}
 
-		std::u8string make_title(std::u8string const& input) {
-			auto const pos = std::u8string_view{input}.find_first_of(u8" \t"sv);
-			if (pos != std::string_view::npos) return input;
-			auto result = input;
+		string_type make_title(std::u8string_view input) {
+			auto const pos = input.find_first_of(u8" \t"sv);
+			if (pos != std::string_view::npos) return as_string_v(input);
+			auto result = as_string_v(input);
 			for (auto& byte : result) {
 				if (byte == '-' || byte == '_' || byte == '.' || byte == '/')
 					byte = ' ';

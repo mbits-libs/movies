@@ -19,6 +19,7 @@ class ClassVisitor:
         for object in objects:
             object.on_class_visitor(self)
         self.all_visited()
+        return self
 
     def visit_one(self, object: "WidlClass"):
         object.on_class_visitor(self)

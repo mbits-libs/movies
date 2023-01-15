@@ -12,5 +12,4 @@ namespace movies {
 	using map = std::map<Key, Value, Compare>;
 	template <typename Value>
 	using vector = std::vector<Value>;
-	using string = std::u8string;
 }  // namespace movies

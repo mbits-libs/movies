@@ -15,14 +15,14 @@ namespace movies {
 
 	struct diff {
 		double ratio;
-		string video, info;
+		std::u8string video, info;
 		auto operator<=>(diff const&) const = default;
 	};
 
 	struct differ {
-		map<string, movie_info> const& jsons;
-		vector<string>& infos;
-		vector<string>& videos;
+		map<std::u8string, movie_info> const& jsons;
+		vector<std::u8string>& infos;
+		vector<std::u8string>& videos;
 
 		vector<diff> calc();
 	};

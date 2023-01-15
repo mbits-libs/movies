@@ -12,9 +12,9 @@ namespace movies {
 			return difflib::MakeSequenceMatcher(a, b).ratio();
 		}
 
-		vector<diff> diffs(map<string, movie_info> const& jsons,
-		                   vector<string>& infos,
-		                   vector<string>& videos) {
+		vector<diff> diffs(map<std::u8string, movie_info> const& jsons,
+		                   vector<std::u8string>& infos,
+		                   vector<std::u8string>& videos) {
 			vector<diff> close_calls{};
 			close_calls.reserve(infos.size() * videos.size());
 
@@ -31,7 +31,7 @@ namespace movies {
 					if (c == '-' || c == '_') c = ' ';
 				}
 
-				std::vector<std::u8string> titles{};
+				std::vector<string_type> titles{};
 				titles.reserve(mv.title.items.size());
 				for (auto const& [_, title] : mv.title.items) {
 					titles.push_back(title.text);
@@ -50,7 +50,8 @@ namespace movies {
 
 					auto ratio = similar(info_key, video_key);
 					for (auto const& title : titles) {
-						auto const next_ratio = similar(title, video_key);
+						auto const next_ratio =
+						    similar(as_view(title), video_key);
 						ratio = (std::max)(ratio, next_ratio);
 					}
 
@@ -63,8 +64,8 @@ namespace movies {
 
 			std::sort(close_calls.begin(), close_calls.end(),
 			          std::greater<diff>{});
-			std::unordered_set<string> used_infos;
-			std::unordered_set<string> used_videos;
+			std::unordered_set<std::u8string> used_infos;
+			std::unordered_set<std::u8string> used_videos;
 
 			vector<diff> result{};
 			for (auto& D : close_calls) {
@@ -75,10 +76,10 @@ namespace movies {
 				result.push_back(std::move(D));
 			}
 
-			std::erase_if(infos, [&used_infos](string const& s) {
+			std::erase_if(infos, [&used_infos](std::u8string const& s) {
 				return used_infos.count(s) != 0;
 			});
-			std::erase_if(videos, [&used_videos](string const& s) {
+			std::erase_if(videos, [&used_videos](std::u8string const& s) {
 				return used_videos.count(s) != 0;
 			});
 			return result;

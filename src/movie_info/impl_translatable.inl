@@ -4,8 +4,8 @@
 #pragma once
 
 namespace movies::v1 {
-	inline json::conv_result merge_one_prefixed(std::u8string& prev,
-	                                            std::u8string const& next) {
+	inline json::conv_result merge_one_prefixed(string_type& prev,
+	                                            string_type const& next) {
 		auto const changed = prev != next;
 		prev = next;
 		return changed ? json::conv_result::updated : json::conv_result::ok;
@@ -18,8 +18,8 @@ namespace movies::v1 {
 	}
 
 	inline void merge_new_prefixed(std::string const& key,
-	                               std::u8string const& next,
-	                               translatable<std::u8string>& old_data,
+	                               string_type const& next,
+	                               translatable<string_type>& old_data,
 	                               json::conv_result& result) {
 		auto it = old_data.items.lower_bound(key);
 		if (it != old_data.end() && it->first == key) return;

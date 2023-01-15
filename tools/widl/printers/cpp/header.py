@@ -58,7 +58,8 @@ class HeaderIncludes(TypeVisitor, ClassVisitor):
     def on_simple(self, obj: WidlSimple):
         try:
             info = simple_types[obj.text]
-            self.files.add(info[0])
+            if info[0] is not None:
+                self.files.add(info[0])
         except KeyError:
             if obj.text in builtin_types or obj.text in self.project_types:
                 return

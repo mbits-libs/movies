@@ -21,6 +21,12 @@ namespace movies::v1 {
 		return json::store(dst, key, value);
 	}
 
+	inline void store(json::map& dst,
+	                  std::u8string_view const& key,
+	                  std::string const& value) {
+		return json::store(dst, key, value);
+	}
+
 	template <json::JsonStorableValue T>
 	inline void store(json::map& dst,
 	                  std::u8string_view const& key,
@@ -138,6 +144,19 @@ namespace movies::v1 {
 		return json::load_or_value(src, key, value, dbg);
 	}
 
+	inline json::conv_result load(json::node const& src,
+	                              std::string& val,
+	                              std::string& dbg) {
+		return json::load(src, val, dbg);
+	}
+
+	inline json::conv_result load(json::map const& src,
+	                              std::u8string const& key,
+	                              std::string& value,
+	                              std::string& dbg) {
+		return json::load(src, key, value, dbg);
+	}
+
 #if __cpp_lib_to_underlying >= 202102L
 	using std::to_underlying;
 #else
@@ -216,9 +235,6 @@ namespace movies::v1 {
 	inline json::conv_result store(json::map& data,
 	                               std::u8string_view prefix,
 	                               translatable<ValueType> const& value) {
-		auto const as_s8v = [](std::string_view view) -> std::u8string_view {
-			return {reinterpret_cast<char8_t const*>(view.data()), view.size()};
-		};
 		auto result = json::conv_result::ok;
 		for (auto const& [key, item] : value.items) {
 			if (key.empty()) {
@@ -229,7 +245,7 @@ namespace movies::v1 {
 			full.reserve(prefix.length() + key.length() + 1);
 			full.append(prefix);
 			full.push_back(':');
-			full.append(as_s8v(key));
+			full.append(as_json_view(key));
 			json::store(data, full, item);
 		}
 		return result;
@@ -255,12 +271,7 @@ namespace movies::v1 {
 				value.items[{}] = std::move(item);
 			} else if (key[prefix.length()] == u8':') {
 				LOAD_PREFIXED_ITEM();
-				auto const as_sv =
-				    [](std::u8string_view view) -> std::string_view {
-					return {reinterpret_cast<char const*>(view.data()),
-					        view.size()};
-				};
-				auto view = as_sv(key).substr(prefix.length() + 1);
+				auto view = as_ascii_view(key).substr(prefix.length() + 1);
 				value.items[{view.data(), view.size()}] = std::move(item);
 			}
 		}
@@ -269,24 +280,22 @@ namespace movies::v1 {
 
 	template <typename T>
 	concept MergesObjects = requires(T& old_data, T const& new_data) {
-		                        {
-			                        old_data.merge(new_data)
-			                        } -> std::convertible_to<json::conv_result>;
-	                        };
+		{ old_data.merge(new_data) } -> std::convertible_to<json::conv_result>;
+	};
 
 	template <typename T, typename... Args>
-	concept MergesObjectsWith =
-	    requires(T& old_data, T const& new_data, Args... args) {
-		    {
-			    old_data.merge(new_data, args...)
-			    } -> std::convertible_to<json::conv_result>;
-	    };
+	concept MergesObjectsWith = requires(T& old_data,
+	                                     T const& new_data,
+	                                     Args... args) {
+		{
+			old_data.merge(new_data, args...)
+			} -> std::convertible_to<json::conv_result>;
+	};
 
 	template <typename T>
-	concept MergableJsonValueSimple =
-	    std::integral<T> || is_enum<T> ||
+	concept MergableJsonValueSimple = std::integral<T> || is_enum<T> ||
 	    std::same_as<T, std::chrono::sys_seconds> ||
-	    std::same_as<T, std::u8string>;
+	    std::same_as<T, std::u8string> || std::same_as<T, std::string>;
 
 	template <typename T>
 	concept MergableJsonValue = MergesObjects<T> || MergableJsonValueSimple<T>;
@@ -313,8 +322,9 @@ namespace movies::v1 {
 		return merge_int_ish(old_data, new_data);
 	}
 
-	inline json::conv_result merge(std::u8string& old_data,
-	                               std::u8string const& new_data) {
+	template <typename Char>
+	inline json::conv_result merge(std::basic_string<Char>& old_data,
+	                               std::basic_string<Char> const& new_data) {
 		auto const changed = old_data != new_data;
 		if (changed) old_data = new_data;
 		return changed ? json::conv_result::updated : json::conv_result::ok;

@@ -1,9 +1,9 @@
 from ..common import *
 
 simple_types = {
-    "string": ["<string>", "std::u8string"],
+    "string": [None, "string_type"],
     "ascii": ["<string>", "std::string"],
-    "string_view": ["<string_view>", "std::u8string_view"],
+    "string_view": [None, "string_view_type"],
     "path": ["<filesystem>", "std::filesystem::path"],
     "timestamp": ["<date/date.h>", "date::sys_seconds"],
     "int8_t": ["<cstdint>", "std::int8_t"],
