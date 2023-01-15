@@ -1,5 +1,14 @@
-from .WidlExtAttribute import WidlExtendable, WidlExtAttribute
+from .WidlExtAttribute import (
+    WidlExtendable,
+    WidlExtAttribute,
+    enum_ext_attrs,
+    interface_ext_attrs,
+    attribute_ext_attrs,
+    oparg_ext_attrs,
+    operation_ext_attrs,
+)
 from ..parser.types import file_pos
+from typing import Callable
 
 
 class ClassVisitor:
@@ -62,9 +71,14 @@ class TypeVisitor:
 
 class WidlClass(WidlExtendable):
     def __init__(
-        self, type: str, name: str, ext_attrs: list[WidlExtAttribute], pos: file_pos
+        self,
+        type: str,
+        name: str,
+        ext_attrs: list[WidlExtAttribute],
+        transform: Callable[[list[WidlExtAttribute]], dict],
+        pos: file_pos,
     ):
-        super().__init__(ext_attrs, pos)
+        super().__init__(ext_attrs, transform, pos)
         self.type = type
         self.name = name
         self.partial = False
@@ -81,7 +95,7 @@ class WidlEnum(WidlClass):
         ext_attrs: list[WidlExtAttribute],
         pos: file_pos,
     ):
-        super().__init__("enum", name, ext_attrs, pos)
+        super().__init__("enum", name, ext_attrs, enum_ext_attrs, pos)
         self.items = items
 
     def __str__(self):
@@ -152,7 +166,7 @@ class WidlAttribute(WidlExtendable):
         ext_attrs: list[WidlExtAttribute],
         pos: file_pos,
     ):
-        super().__init__(ext_attrs, pos)
+        super().__init__(ext_attrs, attribute_ext_attrs, pos)
         self.name = name
         self.type = type
 
@@ -168,7 +182,7 @@ class WidlArgument(WidlExtendable):
         ext_attrs: list[WidlExtAttribute],
         pos: file_pos,
     ):
-        super().__init__(ext_attrs, pos)
+        super().__init__(ext_attrs, oparg_ext_attrs, pos)
         self.name = name
         self.type = type
 
@@ -182,7 +196,7 @@ class WidlOperation(WidlExtendable):
         ext_attrs: list[WidlExtAttribute],
         pos: file_pos,
     ):
-        super().__init__(ext_attrs, pos)
+        super().__init__(ext_attrs, operation_ext_attrs, pos)
         self.name = name
         self.type = type
         self.args = args
@@ -197,7 +211,7 @@ class WidlInterface(WidlClass):
         ext_attrs: list[WidlExtAttribute],
         pos: file_pos,
     ):
-        super().__init__("interface", name, ext_attrs, pos)
+        super().__init__("interface", name, ext_attrs, interface_ext_attrs, pos)
         self.props = props
         self.ops = ops
 

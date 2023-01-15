@@ -1,6 +1,7 @@
 from .common import *
 from ...model import *
 from typing import TextIO
+from ..tmplt import TemplateContext
 
 
 class CppTypes(TypeVisitor):
@@ -27,25 +28,94 @@ def _cpp_type(widl: WidlType):
     return widl.on_type_visitor(CppTypes())
 
 
-class HeaderIncludes(TypeVisitor, ClassVisitor):
-    def __init__(self, output: TextIO, project_types: list[str], version: int):
+class EnumInfo:
+    def __init__(self, name: str, items: list[str], ext_attrs: dict):
+        self.name = name
+        self.NAME = name.upper()
+        self.item = items
+        self.ext_attrs = ext_attrs
+
+    @property
+    def text(self):
+        lines: list[str] = [
+            f"#define {self.NAME}_X(X)",
+            *[f"    X({name})" for name in self.item[:-1]],
+        ]
+        max_len = max(len(line) for line in lines)
+        text = []
+        for line in lines:
+            text.append(f"{line:<{max_len}} \\")
+        text.append(f"    X({self.item[-1]})")
+        return "\n".join(text)
+
+
+class AttributeInfo:
+    def __init__(self, name: str, type_name: str, default: str, guards: list[str]):
+        self.name = name
+        self.type = type_name
+        self.default = f"{{{default}}}"
+        self.guards = guards
+
+
+class ArgumentInfo:
+    def __init__(self, name: str, type_name: str, ext_attrs: dict):
+        self.name = name
+        self.type = type_name
+        self.ext_attrs = ext_attrs
+        self.comma = True
+
+
+class OperationInfo:
+    def __init__(
+        self,
+        name: str,
+        type_name: str,
+        guards: list[str],
+        ext_attrs: dict,
+        args: list[ArgumentInfo],
+    ):
+        self.name = name
+        self.type = type_name
+        self.guards = guards
+        self.ext_attrs = ext_attrs
+        self.args = args
+        if len(self.args):
+            self.args[-1].comma = False
+
+
+class InterfaceInfo:
+    def __init__(
+        self,
+        name: str,
+        ext_attrs: dict,
+        attributes: list[AttributeInfo],
+        operations: list[OperationInfo],
+    ):
+        self.name = name
+        self.ext_attrs = ext_attrs
+        self.attributes = attributes
+        self.operations = operations
+
+
+class HeaderContext(TemplateContext):
+    def __init__(self, output: TextIO, version: int):
+        super().__init__(output, version)
+        self.includes: list[str] = []
+        self.enums: list[EnumInfo] = []
+        self.interfaces: list[InterfaceInfo] = []
+
+
+class Visitor(TypeVisitor, ClassVisitor):
+    def __init__(self, project_types: list[str], ctx: HeaderContext):
         super(TypeVisitor).__init__()
         super(ClassVisitor).__init__()
         self.files: set[str] = set()
-        self.output = output
         self.project_types = project_types
-        self.version = version
+        self.ctx = ctx
 
     def all_visited(self):
         files = {*self.files, "<movies/types.hpp>"}
-        for include in sorted(files):
-            print(f"#include {include}", file=self.output)
-        if len(self.files):
-            print(file=self.output)
-        print(
-            f"namespace movies::v{self.version} {{\n  static constexpr auto VERSION = {self.version}u;\n",
-            file=self.output,
-        )
+        self.ctx.includes = list(sorted(files))
 
     def on_optional(self, obj: WidlOptional):
         self.on_subtype(obj)
@@ -66,185 +136,133 @@ class HeaderIncludes(TypeVisitor, ClassVisitor):
             print(f"unknown type: {obj.text}")
 
     def on_interface(self, obj: WidlInterface):
+        attributes: list[AttributeInfo] = []
+        operations = self._initial_ops(obj)
+
         for prop in obj.props:
             prop.type.on_type_visitor(self)
 
+            guard, guards = (prop.ext_attrs["guard"], prop.ext_attrs["guards"])
+            if guard is not None:
+                guards.append(guard)
+            attributes.append(
+                AttributeInfo(
+                    prop.name,
+                    _cpp_type(prop.type),
+                    prop.ext_attrs["default"],
+                    [*guards],
+                )
+            )
+        for op in obj.ops:
+            args: list[ArgumentInfo] = []
 
-class HeaderDefineEnums(ClassVisitor):
-    def __init__(self, output: TextIO):
-        self.output = output
+            op.type.on_type_visitor(self)
+            for arg in op.args:
+                arg.type.on_type_visitor(self)
+                args.append(ArgumentInfo(arg.name, _cpp_type(arg.type), arg.ext_attrs))
 
-    def on_enum(self, obj: WidlEnum):
-        x_macro = f"{obj.name.upper()}_X"
-        lines: list[str] = [
-            f"#define {x_macro}(X)",
-            *[f"  X({name})" for name in obj.items[:-1]],
-        ]
-        max_len = max(len(line) for line in lines)
-        for line in lines:
-            print(f"{line:<{max_len}} \\", file=self.output)
-        print(
-            f"""\
-  X({obj.items[-1]})
+            guard, guards = (prop.ext_attrs["guard"], prop.ext_attrs["guards"])
+            if guard is not None:
+                guards.append(guard)
+            operations.append(
+                OperationInfo(
+                    op.name, _cpp_type(op.type), [*guards], op.ext_attrs, args
+                )
+            )
 
-  enum class {obj.name} {{
-#define X_DECL_TYPE(NAME) NAME,
-    {x_macro}(X_DECL_TYPE)
-#undef X_DECL_TYPE
-  }};
-
-""",
-            file=self.output,
+        self.ctx.interfaces.append(
+            InterfaceInfo(obj.name, obj.ext_attrs, attributes, operations)
         )
 
+    def _initial_ops(self, obj: WidlInterface) -> list[OperationInfo]:
+        initial: list[OperationInfo] = []
 
-class HeaderForwardDeclare(ClassVisitor):
-    def __init__(self, output: TextIO):
-        self.output = output
-        self.separate = False
-
-    def all_visited(self):
-        if self.separate:
-            print(file=self.output)
-
-    def on_interface(self, obj: WidlInterface):
-        print(f"  struct {obj.name};", file=self.output)
-        self.separate = True
-
-
-class HeaderClasses(ClassVisitor):
-    def __init__(self, output: TextIO):
-        self.output = output
-
-    def on_interface(self, obj: WidlInterface):
-        ext_attrs = interface_ext_attrs(obj.ext_attrs)
         load_from, merge_mode, merge_with, spaceship, load_postproc, merge_postproc = (
-            ext_attrs["from"],
-            ext_attrs["merge"],
-            ext_attrs["merge_with"],
-            ext_attrs["spaceship"],
-            ext_attrs["load_postproc"],
-            ext_attrs["merge_postproc"],
+            obj.ext_attrs["from"],
+            obj.ext_attrs["merge"],
+            obj.ext_attrs["merge_with"],
+            obj.ext_attrs["spaceship"],
+            obj.ext_attrs["load_postproc"],
+            obj.ext_attrs["merge_postproc"],
         )
         add_merge = merge_mode != "none"
         comp_type, comp_op = ("auto", "<=>") if spaceship else ("bool", "==")
-        print(
-            f"""\
-  struct {obj.name} {{""",
-            file=self.output,
-        )
-        for prop in obj.props:
-            ext_attrs = attribute_ext_attrs(prop.ext_attrs)
-            guard, guards, default = (
-                ext_attrs["guard"],
-                ext_attrs["guards"],
-                ext_attrs["default"],
-            )
-            if guard is not None:
-                guards.append(guard)
-            if len(guards):
-                print(
-                    "#if {}".format(" ".join(f"defined({guard})" for guard in guards)),
-                    file=self.output,
-                )
-            print(
-                "    {} {}{{{}}};".format(_cpp_type(prop.type), prop.name, default),
-                file=self.output,
-            )
-            if len(guards):
-                print("#endif", file=self.output)
-            pass
-        print(
-            f"""
-    {comp_type} operator{comp_op}({obj.name} const&) const noexcept = default;
 
-    json::node to_json() const;
-    json::conv_result from_json(json::{load_from} const& data, std::string& dbg);""",
-            file=self.output,
-        )
-        if load_postproc:
-            print(
-                f"    json::conv_result load_postproc(std::string& dbg);",
-                file=self.output,
-            )
-        if add_merge:
-            print(
-                "    json::conv_result merge({} const&{});".format(
-                    obj.name,
-                    "".join(
-                        f", {arg_type} {arg_name}" for arg_type, arg_name in merge_with
-                    ),
+        initial.extend(
+            [
+                OperationInfo(
+                    f"operator{comp_op}",
+                    comp_type,
+                    [],
+                    {"defaulted": True},
+                    [ArgumentInfo("rhs", obj.name, {"in": True})],
                 ),
-                file=self.output,
+                OperationInfo(
+                    "to_json",
+                    "json::node",
+                    [],
+                    {"throws": True},
+                    [],
+                ),
+                OperationInfo(
+                    "from_json",
+                    "json::conv_result",
+                    [],
+                    {"throws": True, "mutable": True},
+                    [
+                        ArgumentInfo("data", f"json::{load_from}", {"in": True}),
+                        ArgumentInfo("dbg", "std::string", {"out": True, "in": True}),
+                    ],
+                ),
+            ]
+        )
+
+        if load_postproc:
+            initial.append(
+                OperationInfo(
+                    "load_postproc",
+                    "json::conv_result",
+                    [],
+                    {"throws": True, "mutable": True},
+                    [
+                        ArgumentInfo("dbg", "std::string", {"out": True, "in": True}),
+                    ],
+                )
+            )
+
+        if add_merge:
+            args = [
+                ArgumentInfo("new_data", obj.name, {"in": True}),
+            ]
+            for arg_type, arg_name in merge_with:
+                args.append(ArgumentInfo(arg_name, arg_type, {}))
+            initial.append(
+                OperationInfo(
+                    "merge",
+                    "json::conv_result",
+                    [],
+                    {"throws": True, "mutable": True},
+                    args,
+                )
             )
             if merge_postproc:
-                print(
-                    f"    json::conv_result merge_postproc();",
-                    file=self.output,
+                initial.append(
+                    OperationInfo(
+                        "merge_postproc",
+                        "json::conv_result",
+                        [],
+                        {"throws": True, "mutable": True},
+                        [],
+                    )
                 )
-        for operation in obj.ops:
-            ext_attrs = operation_ext_attrs(operation.ext_attrs)
-            cpp_type = _cpp_type(operation.type)
-            guard, guards = ext_attrs["guard"], ext_attrs["guards"]
-            if guard is not None:
-                guards.append(guard)
-            is_static = ext_attrs["static"]
-            static = "static " if is_static else ""
-            const = "" if is_static or ext_attrs["mutable"] else " const"
-            noexcept = "" if ext_attrs["throws"] else " noexcept"
-            args = []
 
-            for arg in operation.args:
-                ext_attrs = oparg_ext_attrs(arg.ext_attrs)
-                arg_type = _cpp_type(arg.type)
-                if ext_attrs["out"]:
-                    arg_type = f"{arg_type}&"
-                elif ext_attrs["in"]:
-                    arg_type = f"{arg_type} const&"
-                args.append(f"{arg_type} {arg.name}")
-            args = ", ".join(args)
-            if len(guards):
-                print(
-                    "#if {}".format(" ".join(f"defined({guard})" for guard in guards)),
-                    file=self.output,
-                )
-            print(
-                f"    {static}{cpp_type} {operation.name}({args}){const}{noexcept};",
-                file=self.output,
-            )
-            if len(guards):
-                print("#endif", file=self.output)
-        print("  };\n", file=self.output)
+        return initial
+
+    def on_enum(self, obj: WidlEnum):
+        self.ctx.enums.append(EnumInfo(obj.name, obj.items, obj.ext_attrs))
 
 
 def print_header(objects: list[WidlClass], output: TextIO, version: int):
-    print(
-        """\
-// Copyright (c) 2023 midnightBITS
-// This code is licensed under MIT license (see LICENSE for details)
-
-// THIS FILE IS AUTOGENERATED. DO NOT MODIFY
-
-#pragma once""",
-        file=output,
-    )
-    visit_all_classes(
-        objects,
-        [
-            HeaderIncludes(output, [obj.name for obj in objects], version),
-            HeaderDefineEnums(output),
-            HeaderForwardDeclare(output),
-            HeaderClasses(output),
-        ],
-    )
-    print(
-        f"""\
-}}  // namespace movies::v{version}
-
-namespace movies {{
-  using namespace v{version};
-}}  // namespace movies
-
-#define MOVIES_CURR v{version}""",
-        file=output,
-    )
+    ctx = HeaderContext(output, version)
+    Visitor([obj.name for obj in objects], ctx).visit_all(objects)
+    ctx.emit("header.mustache")

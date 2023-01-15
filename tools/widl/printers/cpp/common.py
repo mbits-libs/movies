@@ -1,4 +1,4 @@
-from ..common import *
+from ...parser import file_pos
 
 simple_types = {
     "string": [None, "string_type"],

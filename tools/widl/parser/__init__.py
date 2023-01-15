@@ -402,7 +402,7 @@ def _merge(prev: WidlInterface, next: WidlInterface):
             print(f"{prev.pos}: info: see previous definition")
             raise RuntimeError()
         prev.ops.append(op)
-    prev.ext_attrs.extend(next.ext_attrs)
+    # prev.ext_attrs.update(next.ext_attrs)
 
 
 def top_level_items(tokens: list[token]) -> list[WidlClass]:
