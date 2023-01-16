@@ -53,14 +53,14 @@ namespace movies::v{{version}} {
 
 {{/ add_serdes}}
 {{? add_merge}}
-	// {{merge_with}}
 	json::conv_result {{name}}::merge({{name}} const& new_data{{\}}
-		{{#merge_with}}, {{type}} {{name}} {{/merge_with}}{{\}}
+		{{#merge_with}}, {{type}} {{name}}{{/merge_with}}{{\}}
 	) {
 		auto result = json::conv_result::ok;
 {{# attributes}}
 		OP(v{{version}}::merge({{name}}, new_data.{{name}}{{\}}
 			{{#merge_with}}, {{name}}{{/merge_with}}{{\}}
+			{{#ext_attrs}}{{#merge_with}}, {{merge_with}}{{/merge_with}}{{/ext_attrs}}{{\}}
 		));
 {{/ attributes}}
 {{? ext_attrs.merge_postproc}}

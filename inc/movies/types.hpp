@@ -140,8 +140,6 @@ namespace movies {
 
 	struct alpha_2_aliases;
 
-	enum class prefer_title { mine, theirs };
-
 	template <typename Value>
 	struct translatable {
 		using map_t = std::map<std::string, Value>;
@@ -150,6 +148,19 @@ namespace movies {
 		map_t items{};
 
 		bool operator==(translatable const&) const noexcept = default;
+
+		bool update(std::string const& key, Value const& value) {
+			auto it = items.lower_bound(key);
+			if (it == items.end() || it->first != key) {
+				items.insert(it, {key, value});
+				return true;
+			}
+			if (it->second != value) {
+				it->second = value;
+				return true;
+			}
+			return false;
+		}
 
 		auto begin() const { return items.begin(); }
 		auto end() const { return items.end(); }

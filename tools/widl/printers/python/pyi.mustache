@@ -1,0 +1,56 @@
+{{#typing}}
+from typing import {{typing}}
+
+{{/typing}}
+version: int
+{{#enums}}
+
+class {{name}}(int):
+{{#items}}
+	{{items}}: ClassVar[{{name}}] = ...
+{{/items}}
+{{?items}}
+
+{{/items}}
+	values: ClassVar[dict[int, str]] = ...
+	names: ClassVar[dict[str, int]] = ...
+	name: str = ...
+{{/enums}}
+{{#interfaces}}
+
+{{#synthetic}}
+# synthetic
+{{/synthetic}}
+class {{name}}:
+{{#attributes}}
+	{{name}}: {{type}} = ...
+{{/attributes}}
+{{#operations}}
+{{#staticmethod}}
+	@staticmethod
+{{/staticmethod}}
+{{#classmethod}}
+	@classmethod
+{{/classmethod}}
+{{#property}}
+	@property
+{{/property}}
+	def {{name}}({{\}}
+{{#arguments}}{{name}}{{#type}}: {{type}}{{/type}}{{^last}}, {{/last}}{{/arguments}}{{\}}
+	){{\}}
+	{{#type}} -> {{type}}{{/type}}: ...
+{{/operations}}
+{{/interfaces}}
+
+class crew_builder:
+    class cat:
+        cast: ClassVar[crew_builder.cat] = ...
+        directors: ClassVar[crew_builder.cat] = ...
+        writers: ClassVar[crew_builder.cat] = ...
+
+		values: ClassVar[dict[int, str]] = ...
+		names: ClassVar[dict[str, int]] = ...
+		name: str = ...
+
+    def add(self, kind: crew_builder.cat, full_name: str, ref: Optional[str], contribution: Optional[str]) -> None: ...
+    def apply(self, info: movie_info) -> None: ...

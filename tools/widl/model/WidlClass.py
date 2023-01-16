@@ -7,7 +7,7 @@ from .WidlExtAttribute import (
     oparg_ext_attrs,
     operation_ext_attrs,
 )
-from ..parser.types import file_pos
+from ..types import file_pos
 from typing import Callable
 
 
@@ -220,3 +220,21 @@ class WidlInterface(WidlClass):
 
     def on_class_visitor(self, visitor: ClassVisitor):
         return visitor.on_interface(self)
+
+
+class VisitAllTypes(ClassVisitor):
+    def __init__(self, visitor: TypeVisitor):
+        self.visitor = visitor
+
+    def visit(self, type: WidlType):
+        type.on_type_visitor(self.visitor)
+
+    def on_interface(self, obj: WidlInterface):
+        for prop in obj.props:
+            self.visit(prop.type)
+
+        for op in obj.ops:
+            self.visit(op.type)
+
+            for arg in op.args:
+                self.visit(arg.type)

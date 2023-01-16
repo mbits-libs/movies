@@ -1,7 +1,7 @@
 from typing import Union
 import sys
 import string
-from .types import file_pos, Token, partial_token, token
+from ..types import file_pos, Token, partial_token, token
 from ..model import (
     ClassVisitor,
     WidlClass,
@@ -289,7 +289,7 @@ def _read_operation(
         arg_ext_attrs = _read_extended_attrs(parser)
         tok = parser.consume(op(")"), Token.IDENT)
         parser.put_back()
-        if tok == op(")"):
+        if tok.value == op(")"):
             break
         arg_type = _read_type(parser)
         arg_name = parser.consume(Token.IDENT)

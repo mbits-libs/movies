@@ -1,11 +1,11 @@
-from widl.printers.cpp import print_code, print_header, reorder_types
-from widl.model import *
-from widl.parser import parse_all
-import sys
 import os
+import sys
 from contextlib import contextmanager
 
-VERSION = 1
+from widl.model import *
+from widl.parser import parse_all
+from widl.printers.cpp import print_code, print_header, reorder_types
+from widl.ver import VERSION
 
 
 @contextmanager

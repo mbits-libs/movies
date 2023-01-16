@@ -1,0 +1,10 @@
+partial interface movie_info {
+    [mutable, external] bool merge(
+        movie_info new_data,
+        prefer_title which_title,
+        prefer_details which_details);
+    [external] string as_string();
+    [external] void store_at(string path);
+    [static, external] movie_info loads(string json);
+    [static, external] movie_info load_from(string path);
+};

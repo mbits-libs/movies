@@ -7,6 +7,8 @@
 #include "person_info.hpp"
 
 namespace movies::v1 {
+	static_assert(MineOrTheirs<prefer_title>);
+
 	json::node title_info::to_json() const {
 		std::vector<std::pair<json::string, json::node>> values;
 		values.reserve(3);

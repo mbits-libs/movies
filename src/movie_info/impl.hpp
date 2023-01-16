@@ -279,6 +279,13 @@ namespace movies::v1 {
 	}
 
 	template <typename T>
+	concept MineOrTheirs = requires() {
+		is_enum<T>;
+		{ T::mine } -> std::convertible_to<T>;
+		{ T::theirs } -> std::convertible_to<T>;
+	};
+
+	template <typename T>
 	concept MergesObjects = requires(T& old_data, T const& new_data) {
 		{ old_data.merge(new_data) } -> std::convertible_to<json::conv_result>;
 	};
@@ -312,14 +319,38 @@ namespace movies::v1 {
 		                        : json::conv_result::ok;
 	}
 
+	template <typename IntIsh, MineOrTheirs Select>
+	inline json::conv_result merge_int_ish(IntIsh& old_data,
+	                                       IntIsh new_data,
+	                                       Select which) {
+		auto const prev = old_data;
+		if (which == Select::theirs || old_data == IntIsh{})
+			old_data = new_data;
+
+		return prev != old_data ? json::conv_result::updated
+		                        : json::conv_result::ok;
+	}
+
 	template <std::integral Int>
 	inline json::conv_result merge(Int& old_data, Int new_data) {
 		return merge_int_ish(old_data, new_data);
 	}
 
+	template <std::integral Int, MineOrTheirs Select>
+	inline json::conv_result merge(Int& old_data, Int new_data, Select which) {
+		return merge_int_ish(old_data, new_data, which);
+	}
+
 	template <is_enum Enum>
 	inline json::conv_result merge(Enum& old_data, Enum new_data) {
 		return merge_int_ish(old_data, new_data);
+	}
+
+	template <is_enum Enum, MineOrTheirs Select>
+	inline json::conv_result merge(Enum& old_data,
+	                               Enum new_data,
+	                               Select which) {
+		return merge_int_ish(old_data, new_data, which);
 	}
 
 	template <typename Char>
@@ -342,6 +373,17 @@ namespace movies::v1 {
 	                               std::optional<Payload> const& new_data) {
 		auto const prev = old_data;
 		old_data = new_data || old_data;
+		return prev != old_data ? json::conv_result::updated
+		                        : json::conv_result::ok;
+	}
+
+	template <MergableJsonValue Payload, MineOrTheirs Select>
+	inline json::conv_result merge(std::optional<Payload>& old_data,
+	                               std::optional<Payload> const& new_data,
+	                               Select which) {
+		auto const prev = old_data;
+		old_data = which == Select::theirs ? new_data || old_data
+		                                   : old_data || new_data;
 		return prev != old_data ? json::conv_result::updated
 		                        : json::conv_result::ok;
 	}

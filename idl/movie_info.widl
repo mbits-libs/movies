@@ -1,6 +1,6 @@
-[merge_with("prefer_title|which_title"), load_postproc]
+[merge_with("prefer_title|which_title", "prefer_details|which_details"), load_postproc]
 interface movie_info {
-    attribute unsigned version;
+    [merge_with="which_details"] attribute unsigned version;
     attribute sequence<string> refs;
     attribute translatable<title_info> title;
     attribute sequence<string> genres;
@@ -13,9 +13,9 @@ interface movie_info {
     attribute translatable<string> summary;
     attribute image_info image;
     attribute dates_info dates;
-    attribute unsigned? year;
-    attribute unsigned? runtime;
-    attribute unsigned? rating;
+    [merge_with="which_details"] attribute unsigned? year;
+    [merge_with="which_details"] attribute unsigned? runtime;
+    [merge_with="which_details"] attribute unsigned? rating;
     attribute video_info video;
 
     [throws, mutable] void add_tag(string_view tag);
@@ -82,6 +82,10 @@ interface video_marker {
     attribute string? comment;
     [default="marker_type::bookmark"] attribute marker_type type;
 };
+
+enum prefer_title { "mine", "theirs" };
+
+enum prefer_details { "mine", "theirs" };
 
 enum marker_type {
 	"bookmark",

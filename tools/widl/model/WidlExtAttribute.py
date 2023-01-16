@@ -1,4 +1,4 @@
-from ..parser.types import partial_token, token, file_pos
+from ..types import partial_token, token, file_pos
 import sys
 from typing import Callable
 
@@ -77,6 +77,15 @@ class MergeWith:
 
     def __call__(self, attr: WidlExtAttribute):
         return [tuple(arg.s.split("|")) for arg in attr.args]
+
+
+class AttrMergeWith:
+    def __init__(self):
+        self.name = "merge_with"
+        self.default: list[str] = []
+
+    def __call__(self, attr: WidlExtAttribute):
+        return [arg.s for arg in attr.args]
 
 
 class LoadAs:
@@ -167,6 +176,7 @@ _attribute_ext_attrs = [
     Guard(),
     Guards(),
     Default(),
+    AttrMergeWith(),
 ]
 
 
@@ -179,6 +189,7 @@ _operation_ext_attrs = [
     FlagArg("mutable"),
     FlagArg("throws"),
     FlagArg("static"),
+    FlagArg("external"),
     Guard(),
     Guards(),
 ]

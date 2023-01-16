@@ -22,4 +22,5 @@ namespace io {
 	};
 
 	std::vector<char8_t> contents(fs::path const&);
+	std::vector<char8_t> contents(io::file::ptr const&);
 }  // namespace io

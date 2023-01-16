@@ -21,10 +21,13 @@ namespace io {
 	}
 
 	std::vector<char8_t> contents(fs::path const& path) {
-		std::vector<char8_t> result;
-
 		auto json = file::open(path, "rb");
-		if (!json) return result;
+		if (!json) return {};
+		return contents(json);
+	}
+
+	std::vector<char8_t> contents(io::file::ptr const& json) {
+		std::vector<char8_t> result;
 
 		char8_t buffer[8192];  // NOLINT(readability-magic-numbers)
 		size_t read{};

@@ -51,7 +51,7 @@ namespace movies {
 					auto ratio = similar(info_key, video_key);
 					for (auto const& title : titles) {
 						auto const next_ratio =
-						    similar(as_view(title), video_key);
+						    similar(as_utf8_view(title), video_key);
 						ratio = (std::max)(ratio, next_ratio);
 					}
 
