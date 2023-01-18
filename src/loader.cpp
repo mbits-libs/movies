@@ -60,8 +60,8 @@ namespace movies {
 
 			static constexpr auto ext = u8".json"sv;
 			for (auto&& entry : iterator) {
-				if (entry.path().extension().generic_u8string() != ext)
-					continue;
+				if (fs::is_directory(entry.status())) continue;
+				if (entry.path().extension().u8string() != ext) continue;
 				auto const& json_path = entry.path();
 				auto u8ident = fs::relative(json_path, root).generic_u8string();
 				u8ident = u8ident.substr(0, u8ident.length() - ext.length());
@@ -97,6 +97,7 @@ namespace movies {
 			if (ec) return result;
 
 			for (auto&& entry : iterator) {
+				if (fs::is_directory(entry.status())) continue;
 				auto const ext = entry.path().extension().u8string();
 				if (ext != u8".mp4"sv && ext != u8".mkv") continue;
 				auto const& movie_path = entry.path();
