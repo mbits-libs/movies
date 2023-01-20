@@ -2,6 +2,7 @@ from .common import *
 from ...model import *
 from typing import TextIO
 from ..tmplt import TemplateContext
+from dataclasses import dataclass
 
 
 class CppTypes(TypeVisitor):
@@ -50,11 +51,15 @@ class EnumInfo:
 
 
 class AttributeInfo:
-    def __init__(self, name: str, type_name: str, default: str, guards: list[str]):
+    def __init__(
+        self, name: str, type_name: str, default: str, guards: list[str], pos: file_pos
+    ):
         self.name = name
         self.type = type_name
         self.default = f"{{{default}}}"
         self.guards = guards
+        self.file_line = pos.line
+        self.file_name = pos.path
 
 
 class ArgumentInfo:
@@ -73,28 +78,27 @@ class OperationInfo:
         guards: list[str],
         ext_attrs: dict,
         args: list[ArgumentInfo],
+        pos: file_pos,
     ):
         self.name = name
         self.type = type_name
         self.guards = guards
         self.ext_attrs = ext_attrs
         self.args = args
+        self.file_line = pos.line
+        self.file_name = pos.path
         if len(self.args):
             self.args[-1].comma = False
 
 
+@dataclass
 class InterfaceInfo:
-    def __init__(
-        self,
-        name: str,
-        ext_attrs: dict,
-        attributes: list[AttributeInfo],
-        operations: list[OperationInfo],
-    ):
-        self.name = name
-        self.ext_attrs = ext_attrs
-        self.attributes = attributes
-        self.operations = operations
+    name: str
+    ext_attrs: dict
+    attributes: list[AttributeInfo]
+    operations: list[OperationInfo]
+    file_line: int
+    file_name: str
 
 
 class HeaderContext(TemplateContext):
@@ -151,6 +155,7 @@ class Visitor(TypeVisitor, ClassVisitor):
                     _cpp_type(prop.type),
                     prop.ext_attrs["default"],
                     [*guards],
+                    prop.pos,
                 )
             )
         for op in obj.ops:
@@ -166,12 +171,19 @@ class Visitor(TypeVisitor, ClassVisitor):
                 guards.append(guard)
             operations.append(
                 OperationInfo(
-                    op.name, _cpp_type(op.type), [*guards], op.ext_attrs, args
+                    op.name, _cpp_type(op.type), [*guards], op.ext_attrs, args, op.pos
                 )
             )
 
         self.ctx.interfaces.append(
-            InterfaceInfo(obj.name, obj.ext_attrs, attributes, operations)
+            InterfaceInfo(
+                obj.name,
+                obj.ext_attrs,
+                attributes,
+                operations,
+                file_line=obj.pos.line,
+                file_name=obj.pos.path,
+            )
         )
 
     def _initial_ops(self, obj: WidlInterface) -> list[OperationInfo]:
@@ -185,37 +197,46 @@ class Visitor(TypeVisitor, ClassVisitor):
             obj.ext_attrs["load_postproc"],
             obj.ext_attrs["merge_postproc"],
         )
+        obj.ext_attrs["has_to_string"] = load_from != "none"
         add_merge = merge_mode != "none"
         comp_type, comp_op = ("auto", "<=>") if spaceship else ("bool", "==")
 
-        initial.extend(
-            [
-                OperationInfo(
-                    f"operator{comp_op}",
-                    comp_type,
-                    [],
-                    {"defaulted": True},
-                    [ArgumentInfo("rhs", obj.name, {"in": True})],
-                ),
-                OperationInfo(
-                    "to_json",
-                    "json::node",
-                    [],
-                    {"throws": True},
-                    [],
-                ),
-                OperationInfo(
-                    "from_json",
-                    "json::conv_result",
-                    [],
-                    {"throws": True, "mutable": True},
-                    [
-                        ArgumentInfo("data", f"json::{load_from}", {"in": True}),
-                        ArgumentInfo("dbg", "std::string", {"out": True, "in": True}),
-                    ],
-                ),
-            ]
+        initial.append(
+            OperationInfo(
+                f"operator{comp_op}",
+                comp_type,
+                [],
+                {"defaulted": True},
+                [ArgumentInfo("rhs", obj.name, {"in": True})],
+                obj.pos,
+            )
         )
+        if load_from != "none":
+            initial.extend(
+                [
+                    OperationInfo(
+                        "to_json",
+                        "json::node",
+                        [],
+                        {"throws": True},
+                        [],
+                        obj.pos,
+                    ),
+                    OperationInfo(
+                        "from_json",
+                        "json::conv_result",
+                        [],
+                        {"throws": True, "mutable": True},
+                        [
+                            ArgumentInfo("data", f"json::{load_from}", {"in": True}),
+                            ArgumentInfo(
+                                "dbg", "std::string", {"out": True, "in": True}
+                            ),
+                        ],
+                        obj.pos,
+                    ),
+                ]
+            )
 
         if load_postproc:
             initial.append(
@@ -227,6 +248,7 @@ class Visitor(TypeVisitor, ClassVisitor):
                     [
                         ArgumentInfo("dbg", "std::string", {"out": True, "in": True}),
                     ],
+                    obj.pos,
                 )
             )
 
@@ -243,6 +265,7 @@ class Visitor(TypeVisitor, ClassVisitor):
                     [],
                     {"throws": True, "mutable": True},
                     args,
+                    obj.pos,
                 )
             )
             if merge_postproc:
@@ -253,6 +276,7 @@ class Visitor(TypeVisitor, ClassVisitor):
                         [],
                         {"throws": True, "mutable": True},
                         [],
+                        obj.pos,
                     )
                 )
 

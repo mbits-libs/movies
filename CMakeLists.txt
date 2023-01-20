@@ -48,13 +48,15 @@ elseif (NOT TARGET mbits-json::json)
     find_package(mbits-json REQUIRED CONFIG)
     set(JSON_TGT mbits-json::json)
 endif()
-find_package(Boost)
 
+find_package(Boost)
 if (TARGET Boost::python)
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 else()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 endif()
+
+find_package(mbits-utfconv REQUIRED)
 
 ##################################################################
 # IO
@@ -74,6 +76,7 @@ set(MOVIES_SRCS
     inc/movies/db_info.hpp
     inc/movies/diff.hpp
     inc/movies/fwd.hpp
+    inc/movies/image_url.hpp
     inc/movies/loader.hpp
     inc/movies/types.hpp
     inc/movies/opt.hpp
@@ -127,7 +130,7 @@ target_include_directories(movies
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_link_libraries(movies PUBLIC ${JSON_TGT} io fmt::fmt date::date)
+target_link_libraries(movies PUBLIC ${JSON_TGT} io fmt::fmt date::date mbits::utfconv)
 set_target_properties(movies PROPERTIES
     OUTPUT_NAME movies-dev)
 
@@ -154,6 +157,7 @@ if (TARGET Boost::python)
 
     set(PY3_GEN_SRCS
         ${CMAKE_CURRENT_BINARY_DIR}/src/py3/movies_generated.cpp
+        ${CMAKE_CURRENT_BINARY_DIR}/src/py3/movies_generated_impl.cpp
         ${CMAKE_CURRENT_BINARY_DIR}/modules/movies.pyi
     )
     source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${PY3_SRCS})
@@ -162,6 +166,7 @@ if (TARGET Boost::python)
     add_custom_command(
         OUTPUT
             ${CMAKE_CURRENT_BINARY_DIR}/src/py3/movies_generated.cpp
+            ${CMAKE_CURRENT_BINARY_DIR}/src/py3/movies_generated_impl.cpp
             ${CMAKE_CURRENT_BINARY_DIR}/modules/movies.pyi
         COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/py3-mod.py ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info.widl ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info_py3.widl
         DEPENDS
@@ -187,6 +192,7 @@ if (TARGET Boost::python)
     )
     if (WIN32)
         set_target_properties(movies-py3 PROPERTIES SUFFIX ".pyd")
+        target_compile_options(movies-py3 PRIVATE /bigobj)
     endif()
     target_include_directories(movies-py3
         PRIVATE

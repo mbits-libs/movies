@@ -3,8 +3,13 @@
 #include <io/file.hpp>
 #include <movies/movie_info.hpp>
 #include <py3/converter.hpp>
+#if defined(MOVIES_HAS_NAVIGATOR)
+#include <tangle/curl/proto.hpp>
+#endif
 
 namespace movies::v1 {
+	using namespace boost::python;
+
 	bool debug_on = false;
 	void set_debug(bool value) {
 		if (value != debug_on) {
@@ -14,16 +19,43 @@ namespace movies::v1 {
 	}
 	bool get_debug() noexcept { return debug_on; }
 
-	bool movie_info__merge(movie_info& self,
-	                       movie_info const& new_data,
-	                       prefer_title which_title,
-	                       prefer_details which_details) {
-		auto const result = self.merge(new_data, which_title, which_details);
+	void poster_info__assign_small(poster_info& self,
+	                               image_url const& address) {
+		self.small = address;
+	}
+
+	void poster_info__assign_normal(poster_info& self,
+	                                image_url const& address) {
+		self.normal = address;
+	}
+	void poster_info__assign_large(poster_info& self,
+	                               image_url const& address) {
+		self.large = address;
+	}
+
+	boost::python::tuple movie_info__merge(
+	    movie_info& self,
+	    movie_info const& new_data,
+	    prefer_title which_title,
+	    prefer_details which_details,
+	    string_type const& movie_id,
+	    [[maybe_unused]] std::optional<string_type> const& base_url) {
+		auto copy = new_data;
+		copy.map_images(movie_id);
+#if defined(MOVIES_HAS_NAVIGATOR)
+		if (base_url) copy.canonize_uris(as_ascii_view(*base_url));
+#endif
+		image_diff diff{};
+		auto const result = self.merge(copy, which_title, which_details, &diff);
 		if (result == json::conv_result::failed) {
 			fprintf(stderr, "throwing \"failed merging two movies\"\n");
 			throw std::runtime_error("failed merging two movies");
 		}
-		return result == json::conv_result::updated;
+
+		list py_result{};
+		py_result.append(result == json::conv_result::updated);
+		py_result.append(object(diff));
+		return tuple{py_result};
 	}
 
 	movie_info static__movie_info__loads(string_type const& data) {
@@ -51,7 +83,7 @@ namespace movies::v1 {
 		}
 
 		auto const bytes = io::contents(file);
-		if (debug_on) std::cerr << "-- bytes: " << bytes.size() << '\n';
+		if (debug_on) std::cerr << "-- json size: " << bytes.size() << '\n';
 		auto node = json::read_json({bytes.data(), bytes.size()});
 		std::string dbg;
 		movie_info self;
@@ -62,7 +94,7 @@ namespace movies::v1 {
 		return self;
 	}
 
-	string_type movie_info__as_string(movie_info const& self) {
+	string_type movie_info__json(movie_info const& self) {
 		auto node = self.to_json();
 		std::u8string output;
 		json::write_json(output, node, json::four_spaces);
@@ -82,6 +114,28 @@ namespace movies::v1 {
 		}
 
 		json::write_json(file.get(), self.to_json(), json::four_spaces);
+	}
+
+	bool movie_info__download_images(
+	    [[maybe_unused]] movie_info& self,
+	    [[maybe_unused]] string_type const& db_root,
+	    [[maybe_unused]] image_diff& diff,
+	    [[maybe_unused]] string_type const& movie_id,
+	    [[maybe_unused]] string_type const& referer) {
+#if defined(MOVIES_HAS_NAVIGATOR)
+		tangle::nav::navigator generic{};
+		auto curl = tangle::curl::proto();
+		generic.reg_proto("http", curl);
+		generic.reg_proto("https", curl);
+
+		return self.download_images(as_fs_view(db_root), generic, diff,
+		                            movie_id, as_ascii_view(referer), debug_on);
+#else
+		if (debug_on)
+			std::cerr << "-- movie_info.download_images is not supported by "
+			             "this binary\n";
+		return true;
+#endif
 	}
 
 	json::node simpler(json::node value, int level);

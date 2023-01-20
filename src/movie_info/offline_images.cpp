@@ -3,76 +3,18 @@
 
 #if defined(MOVIES_HAS_NAVIGATOR)
 
-#ifdef _MSC_VER
-#include <format>
-#else
 #include <date/date.h>
 #include <fmt/format.h>
-#endif
 
 #include <execution>
 #include <io/file.hpp>
 #include <movies/movie_info.hpp>
 #include <set>
 
-#ifdef _MSC_VER
-namespace fmt {
-	using std::format;
-}
-#endif
-
 namespace movies::v1 {
 	using namespace tangle;
 
 	namespace {
-		void rebase_img(std::optional<string_type>& dst,
-		                uri const& base,
-		                std::map<string_type, uri>& mapping,
-		                string_view_type dirname,
-		                std::string_view filename) {
-			if (dst && dst->empty()) dst = std::nullopt;
-			if (!dst) return;
-
-			auto src =
-			    uri::canonical(uri{as_ascii_string(std::move(*dst))}, base);
-			auto ext = fs::path{src.path()}.extension().u8string();
-			if (ext.empty() || ext == u8".jpeg"sv) ext = u8".jpg"sv;
-			string_type result{};
-			result.reserve(dirname.length() + filename.length() + ext.length() +
-			               1);
-			result.append(dirname);
-			result.push_back('/');
-			result.append(as_view(filename));
-			result.append(as_view(ext));
-			dst = std::move(result);
-			mapping[*dst] = src;
-		}
-
-		std::map<string_type, uri> rebase_all(movies::image_info& self,
-		                                      string_view_type dirname,
-		                                      uri const& base) {
-			std::map<string_type, uri> mapping;
-
-			rebase_img(self.highlight, base, mapping, dirname,
-			           "01-highlight"sv);
-			rebase_img(self.poster.small, base, mapping, dirname,
-			           "00-poster-0_small"sv);
-			rebase_img(self.poster.normal, base, mapping, dirname,
-			           "00-poster-1_normal"sv);
-			rebase_img(self.poster.large, base, mapping, dirname,
-			           "00-poster-2_large"sv);
-
-			size_t index{};
-			for (auto& image : self.gallery) {
-				std::optional<string_type> sure{std::move(image)};
-				rebase_img(sure, base, mapping, dirname,
-				           fmt::format("02-gallery-{:02}"sv, index++));
-				if (sure) image = std::move(*sure);
-			}
-
-			return mapping;
-		}
-
 		inline nav::request prepare_request(uri const& address,
 		                                    uri const& referrer) {
 			nav::request req{address};
@@ -80,55 +22,200 @@ namespace movies::v1 {
 			return req;
 		}
 
+		struct operation_src {
+			image_op op;
+			string_type src;
+		};
+		std::map<string_type, operation_src> reorganize(image_diff& diff) {
+			std::map<string_type, operation_src> result{};
+			for (auto& op : diff.ops) {
+				auto it = result.lower_bound(op.dst);
+				if (it == result.end() || it->first != op.dst) {
+					result.insert(it,
+					              {
+					                  std::move(op.dst),
+					                  {.op = op.op, .src = std::move(op.src)},
+					              });
+					continue;
+				}
+				if (op.op > it->second.op) {
+					it->second = {.op = op.op, .src = std::move(op.src)};
+				}
+			}
+			return result;
+		}
+
+		class fs_ops {
+		public:
+			bool store(fs::path const& dst,
+			           std::span<char const> bytes,
+			           bool debug_on) {
+				std::error_code ignore{};
+				fs::create_directories(dst.parent_path(), ignore);
+				if (ignore) {
+					fmt::print(stderr, "Cannot create directory for {}: {}\n",
+					           as_ascii_view(dst.generic_u8string()),
+					           ignore.message());
+
+					return false;
+				}
+
+				auto file = io::file::open(dst, "wb");
+				if (!file) {
+					fmt::print(stderr, "Cannot open {} for writing\n",
+					           as_ascii_view(dst.generic_u8string()));
+					return false;
+				}
+
+				auto const written =
+				    std::fwrite(bytes.data(), 1, bytes.size(), file.get());
+				if (debug_on) {
+					fmt::print(stderr, "-- writen {} for {}\n", written,
+					           as_ascii_view(dst.generic_u8string()));
+				}
+
+				if (written < bytes.size()) {
+					fmt::print(stderr, "Cannot write to {}\n",
+					           as_ascii_view(dst.generic_u8string()));
+					return false;
+				}
+
+				return true;
+			}
+
+			bool remove(fs::path const& dst, bool debug_on) {
+				if (debug_on) {
+					fmt::print(
+					    stderr, "-- remove {}\n",
+					    as_ascii_view(dst.parent_path().generic_u8string()));
+				}
+				std::error_code ignore{};
+				fs::remove(dst, ignore);
+				if (ignore) {
+					fmt::print(stderr, "Cannot remove {}: {}\n",
+					           as_ascii_view(dst.generic_u8string()),
+					           ignore.message());
+
+					return false;
+				}
+				dirs_.insert(dst.parent_path());
+
+				return true;
+			}
+
+			bool rename(fs::path const& src,
+			            fs::path const& dst,
+			            bool debug_on) {
+				if (debug_on) {
+					fmt::print(
+					    stderr, "-- move {} -> {}\n",
+					    as_ascii_view(src.parent_path().generic_u8string()),
+					    as_ascii_view(dst.parent_path().generic_u8string()));
+				}
+
+				std::error_code ignore{};
+				fs::create_directories(dst.parent_path(), ignore);
+				if (ignore) {
+					fmt::print(stderr, "Cannot create directory for {}: {}\n",
+					           as_ascii_view(dst.generic_u8string()),
+					           ignore.message());
+
+					return false;
+				}
+				fs::rename(src, dst, ignore);
+				if (ignore) {
+					fmt::print(stderr, "Cannot move {} to {}: {}\n",
+					           as_ascii_view(src.generic_u8string()),
+					           as_ascii_view(dst.generic_u8string()),
+					           ignore.message());
+					return false;
+				}
+
+				dirs_.insert(src.parent_path());
+				return true;
+			}
+
+			void cleanup() {
+				std::vector<fs::path> stack{
+				    std::make_move_iterator(dirs_.begin()),
+				    std::make_move_iterator(dirs_.end())};
+
+				while (!stack.empty()) {
+					auto dir = std::move(stack.back());
+					stack.pop_back();
+					std::error_code ignore{};
+					if (!fs::is_empty(dir, ignore)) continue;
+					fs::remove(dir, ignore);
+					if (ignore) continue;
+					auto parent = dir.parent_path();
+					if (parent != dir) stack.push_back(parent);
+				}
+			}
+
+		private:
+			std::set<fs::path> dirs_{};
+		};
 	}  // namespace
 
-	bool movie_info::offline_images(fs::path const& db_root,
-	                                nav::navigator& nav,
-	                                uri const& referrer,
-	                                string_view_type dirname) {
-		auto mapping = rebase_all(image, dirname, uri::make_base(referrer));
-
-		auto const img_dir = db_root / "img"sv;
-
+	bool movie_info::download_images(std::filesystem::path const& db_root,
+	                                 tangle::nav::navigator& nav,
+	                                 image_diff& diff,
+	                                 string_view_type movie_id,
+	                                 tangle::uri const& referer,
+	                                 bool debug) {
 		std::error_code ec{};
-		fs::create_directories(img_dir / dirname, ec);
+		auto const img_root = db_root / "img"sv;
+		fs::create_directories(img_root / movie_id, ec);
 		if (ec) return false;
 
-		std::set<std::chrono::sys_seconds> mtimes;
+		auto mapping = reorganize(diff);
+		fs_ops ops{};
+		std::set<std::chrono::sys_seconds> mtimes{};
+		for (auto const& [dst, action] : mapping) {
+			switch (action.op) {
+				case image_op::rm:
+					if (dst.empty()) break;
+					if (!ops.remove(img_root / as_fs_view(dst), debug))
+						return false;
+					break;
+				case image_op::move:
+					if (dst.empty() || action.src.empty()) break;
+					if (!ops.rename(img_root / as_fs_view(action.src),
+					                img_root / as_fs_view(dst), debug))
+						return false;
+					break;
+				case image_op::download: {
+					if (dst.empty() || action.src.empty()) break;
+					auto const url = as_ascii_view(action.src);
+					if (debug)
+						fmt::print(stderr, "-- download {} from {}\n",
+						           as_ascii_view(dst), url);
+					auto img = nav.open(prepare_request(url, referer));
+					if (!img.exists()) {
+						fmt::print(stderr,
+						           "Cannot download image from {}: {}\n", url,
+						           img.status_text());
+						continue;
+					}
 
-		for (auto const& [fname, url] : mapping) {
-			auto filename = img_dir / fname;
-			auto img = nav.open(prepare_request(url, referrer));
-			if (!img.exists()) {
-				std::cout << "Cannot download image for " << filename.string()
-				          << ": " << img.status_text() << '\n';
-				return false;
-			}
+					if (!ops.store(img_root / as_fs_view(dst), img.text(),
+					               debug))
+						return false;
 
-			std::chrono::sys_seconds mtime{};
-			if (auto last_modified =
-			        img.headers().find_front(nav::header::Last_Modified)) {
-				auto const mtime =
-				    movies::dates_info::from_http_date(*last_modified);
-				if (mtime && *mtime != std::chrono::sys_seconds{})
-					mtimes.insert(*mtime);
-			}
-
-			auto file = io::file::open(filename, "wb");
-			if (!file) {
-				std::cout << "Cannot open " << filename.string()
-				          << " for writing\n";
-				return false;
-			}
-
-			std::string_view data{img.text()};
-			auto const written =
-			    std::fwrite(data.data(), 1, data.size(), file.get());
-			if (written < data.size()) {
-				std::cout << "Cannot write to " << filename.string() << '\n';
-				return false;
+					std::chrono::sys_seconds mtime{};
+					if (auto last_modified = img.headers().find_front(
+					        nav::header::Last_Modified)) {
+						auto const mtime =
+						    movies::dates_info::from_http_date(*last_modified);
+						if (mtime && *mtime != std::chrono::sys_seconds{})
+							mtimes.insert(*mtime);
+					}
+					break;
+				}
 			}
 		}
+
+		ops.cleanup();
 
 		if (!mtimes.empty()) {
 			auto const mtime =

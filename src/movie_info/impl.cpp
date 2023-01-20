@@ -3,8 +3,15 @@
 
 #include <movies/movie_info.hpp>
 
+#include <fmt/format.h>
+#include <movies/image_url.hpp>
+#include <set>
 #include "impl.hpp"
 #include "person_info.hpp"
+
+#if defined(MOVIES_HAS_NAVIGATOR)
+#include <tangle/uri.hpp>
+#endif
 
 namespace movies::v1 {
 	static_assert(MineOrTheirs<prefer_title>);
@@ -192,6 +199,278 @@ namespace movies::v1 {
 		}
 
 		return json::conv_result::failed;
+	}
+
+	json::node image_url::to_json() const {
+		if (!url) return as_json_string_v(path);
+		if (path.empty()) return as_json_string_v(*url);
+		return json::array{as_json_string_v(path), as_json_string_v(*url)};
+	}
+
+	json::conv_result image_url::from_json(json::node const& data,
+	                                       std::string& dbg) {
+		auto ref = cast<json::string>(data);
+		auto arr = cast<json::array>(data);
+
+		if (ref) {
+			path = as_string_v(*ref);
+			url = std::nullopt;
+#if defined(MOVIES_HAS_NAVIGATOR)
+			tangle::uri uri{as_ascii_view(path)};
+			if (uri.has_scheme() && uri.has_authority()) {
+				url = std::move(path);
+				path.clear();
+			}
+#endif
+			return json::conv_result::ok;
+		}
+
+		if (arr && arr->size() == 2) {
+			auto ref = json::cast<json::string>(arr->front());
+			auto address = json::cast<json::string>(arr->back());
+			if (ref && address) {
+				path = as_string_v(*ref);
+				if (address->empty())
+					url = std::nullopt;
+				else
+					url = as_string_v(*address);
+				return json::conv_result::ok;
+			}
+		}
+
+		return json::conv_result::failed;
+	}
+
+	json::conv_result image_url::merge(image_url const& new_data) {
+		auto result = json::conv_result::ok;
+		auto const prev = path;
+		if (!url || url->empty()) {
+			if (new_data.url && !new_data.url->empty())
+				result = json::conv_result::updated;
+			path = new_data.path;
+			url = new_data.url;
+		}
+		return result;
+	}
+
+#define OPT(CURR, NEW)                \
+	OP(CURR&& NEW ? CURR->merge(*NEW) \
+	              : (CURR = NEW, json::conv_result::updated))
+
+	json::conv_result poster_info::merge(poster_info const& new_data) {
+		auto result = json::conv_result::ok;
+		OPT(small, new_data.small);
+		OPT(large, new_data.large);
+		OPT(normal, new_data.normal);
+		return result;
+	}
+
+	bool empty(image_url const& data) noexcept {
+		return data.path.empty() && (!data.url || data.url->empty());
+	}
+
+	bool empty(std::optional<image_url> const& data) noexcept {
+		return !data || empty(*data);
+	}
+
+	bool empty(poster_info const& data) noexcept {
+		return empty(data.small) && empty(data.normal) && empty(data.large);
+	}
+
+	json::conv_result clear(poster_info& data) noexcept {
+		auto changed = json::conv_result::ok;
+		if (empty(data.small)) {
+			data.small = std::nullopt;
+			changed = json::conv_result::updated;
+		}
+		if (empty(data.normal)) {
+			data.normal = std::nullopt;
+			changed = json::conv_result::updated;
+		}
+		if (empty(data.large)) {
+			data.large = std::nullopt;
+			changed = json::conv_result::updated;
+		}
+		return changed;
+	}
+
+	template <typename T>
+	json::conv_result clear(translatable<T>& data) noexcept {
+		std::vector<std::string> keys{};
+		keys.reserve(data.items.size());
+		for (auto const& [key, value] : data.items) {
+			if (empty(value)) keys.push_back(key);
+		}
+
+		auto changed = json::conv_result::ok;
+		for (auto const& key : keys) {
+			data.items.erase(key);
+			changed = json::conv_result::updated;
+		}
+		return changed;
+	}
+
+	string_view_type common_prefix(string_view_type prev,
+	                               bool& initialized,
+	                               string_view_type url) {
+		if (!initialized) {
+			initialized = !url.empty();
+			return url;
+		}
+		for (size_t index = 0; index < prev.length(); ++index) {
+			if (index == url.length() || prev[index] != url[index])
+				return prev.substr(0, index);
+		}
+		return prev;
+	}
+
+	string_view_type common_prefix(string_view_type prev,
+	                               bool& initialized,
+	                               std::optional<image_url> const& url) {
+		if (!url) return prev;
+		return common_prefix(prev, initialized, url->path);
+	}
+
+	string_view_type common_prefix(string_view_type prev,
+	                               bool& initialized,
+	                               poster_info const& url) {
+		prev = common_prefix(prev, initialized, url.small);
+		prev = common_prefix(prev, initialized, url.normal);
+		prev = common_prefix(prev, initialized, url.large);
+		return prev;
+	}
+
+	template <typename T>
+	string_view_type common_prefix(string_view_type prev,
+	                               bool& initialized,
+	                               translatable<T> const& url) {
+		for (auto const& [_, item] : url.items) {
+			prev = common_prefix(prev, initialized, item);
+		}
+
+		return prev;
+	}
+
+	json::conv_result image_info::merge(image_info const& new_data,
+	                                    image_diff* image_changes) {
+		auto const copy = *this;
+
+		auto result = json::conv_result::ok;
+		OP(v1::merge(highlight, new_data.highlight));
+		OP(v1::merge(poster, new_data.poster));
+
+		std::vector<string_view_type> curr, next;
+		std::map<string_view_type, string_view_type> curr_rev, next_rev;
+
+		curr.reserve(gallery.size());
+		for (auto const& [lang, hl] : new_data.highlight.items) {
+			if (!hl.url || hl.url->empty()) continue;
+			auto it = highlight.items.find(lang);
+			if (it != highlight.end() && hl.url == it->second.url) continue;
+
+			bool found = false;
+			for (auto const& image : gallery) {
+				if (image.url == hl.url) {
+					found = true;
+					break;
+				}
+			}
+			if (found) continue;
+
+			for (auto const& image : curr) {
+				if (image == hl.url) {
+					found = true;
+					break;
+				}
+			}
+			if (found) continue;
+
+			curr.push_back(*hl.url);
+			curr_rev[*hl.url] = hl.path;
+		}
+		std::set<string_type> old_gallery_files{};
+		for (auto const& image : gallery) {
+			if (!image.path.empty()) old_gallery_files.insert(image.path);
+
+			if (!image.url || image.url->empty()) {
+				result = json::conv_result::updated;
+				continue;
+			}
+
+			curr.push_back(*image.url);
+			curr_rev[*image.url] = image.path;
+		}
+
+		next.reserve(gallery.size());
+		for (auto const& image : new_data.gallery) {
+			if (!image.url || image.url->empty()) continue;
+
+			next.push_back(*image.url);
+			next_rev[*image.url] = image.path;
+		}
+
+		OP(v1::merge(curr, next));
+
+		OP(clear(highlight));
+		OP(clear(poster));
+
+		auto prefix = as_string_v([&] {
+			bool initied{false};
+			auto movie_id = common_prefix({}, initied, highlight);
+			movie_id = common_prefix(movie_id, initied, poster);
+			for (auto const& image : gallery) {
+				movie_id = common_prefix(movie_id, initied, image);
+			}
+			auto pos = movie_id.rfind('/');
+			if (pos != std::string::npos) movie_id = movie_id.substr(0, pos);
+			if (!movie_id.empty() && movie_id.back() == '/')
+				movie_id = movie_id.substr(0, movie_id.length() - 1);
+			return movie_id;
+		}());
+		if (!prefix.empty()) prefix.push_back('/');
+
+		std::vector<image_url> new_gallery{};
+		new_gallery.reserve(curr.size());
+		size_t index{};
+		for (auto const& url : curr) {
+			auto path = [&]() -> string_view_type {
+				auto it = curr_rev.find(url);
+				if (it != curr_rev.end()) return it->second;
+				it = next_rev.find(url);
+				if (it != next_rev.end()) return it->second;
+				return {};
+			}();
+			auto filename = as_string(fmt::format(
+			    "{}02-gallery-{:02}{}", as_ascii_view(prefix), index,
+			    path.empty()
+			        ? ".jpg"sv
+			        : as_ascii_view(fs::path{path}.extension().u8string())));
+			++index;
+			old_gallery_files.erase(filename);
+
+			new_gallery.push_back({
+			    .path = std::move(filename),
+			    .url = as_string_v(url),
+			});
+		}
+		std::swap(gallery, new_gallery);
+
+		if (image_changes) {
+			for (auto& old_file : old_gallery_files) {
+				image_changes->ops.push_back(
+				    {.op = image_op::rm, .dst = std::move(old_file)});
+			}
+
+			visit_image(*this, [&](image_url const& image) {
+				if (!image.url || image.url->empty() || image.path.empty())
+					return;
+				image_changes->ops.push_back({.op = image_op::download,
+				                              .src = *image.url,
+				                              .dst = image.path});
+			});
+		}
+
+		return result;
 	}
 
 	json::node person_name::to_json() const {

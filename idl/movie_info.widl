@@ -1,4 +1,4 @@
-[merge_with("prefer_title|which_title", "prefer_details|which_details"), load_postproc]
+[merge_with("prefer_title|which_title", "prefer_details|which_details", "image_diff*|image_changes"), load_postproc]
 interface movie_info {
     [merge_with="which_details"] attribute unsigned version;
     attribute sequence<string> refs;
@@ -16,12 +16,18 @@ interface movie_info {
     [merge_with="which_details"] attribute unsigned? year;
     [merge_with="which_details"] attribute unsigned? runtime;
     [merge_with="which_details"] attribute unsigned? rating;
+    [merge_with="which_details"] attribute media_kind media_type;
+    [merge_with="which_details"] attribute unsigned? season_no;
+    [merge_with="which_details"] attribute unsigned? episode_no;
     attribute video_info video;
 
     [throws, mutable] void add_tag(string_view tag);
     [throws, mutable] void remove_tag(string_view tag);
     bool has_tag(string_view tag);
 };
+
+[from=none, merge=none]
+interface image_diff {};
 
 [from=node, merge=manual, merge_with("prefer_title|which_title"), load_postproc, merge_postproc]
 interface title_info {
@@ -50,16 +56,24 @@ interface person_name {
     attribute sequence<string> refs;
 };
 
+[merge=manual, merge_with("image_diff*|image_changes")]
 interface image_info {
-    attribute string? highlight;
-    attribute poster_info poster;
-    attribute sequence<string> gallery;
+    attribute translatable<image_url> highlight;
+    attribute translatable<poster_info> poster;
+    attribute sequence<image_url> gallery;
 };
 
+[merge=manual]
 interface poster_info {
-    attribute string? small;
-    attribute string? large;
-    attribute string? normal;
+    attribute image_url? small;
+    attribute image_url? large;
+    attribute image_url? normal;
+};
+
+[from=node, merge=manual, spaceship]
+interface image_url {
+    attribute string path;
+    attribute string? url;
 };
 
 interface dates_info {
@@ -86,6 +100,8 @@ interface video_marker {
 enum prefer_title { "mine", "theirs" };
 
 enum prefer_details { "mine", "theirs" };
+
+enum media_kind { "movie", "part", "short_film", "collection", "series", "miniseries", "season", "episode" };
 
 enum marker_type {
 	"bookmark",

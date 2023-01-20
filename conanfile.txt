@@ -2,6 +2,7 @@
 fmt/8.1.1
 date/3.0.1
 mbits-json/0.1.1 
+mbits-utfconv/1.0.3
 boost/1.81.0
 
 [options]

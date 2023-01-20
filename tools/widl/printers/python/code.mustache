@@ -12,7 +12,10 @@ namespace movies::v{{version}} {
 	json::node simpler(json::node simpler, int level = 2);
 {{#interfaces}}
 {{^synthetic}}
+{{#has_to_string}}
 	std::string internal__{{name}}__to_string({{name}} const&);
+{{/has_to_string}}
+	{{name}} internal__{{name}}__clone({{name}} const&);
 {{/synthetic}}
 {{#operations}}
 {{#external}}
@@ -26,11 +29,19 @@ namespace movies::v{{version}} {
 {{/interfaces}}
 {{#interfaces}}
 {{^synthetic}}
+{{#has_to_string}}
 
 	std::ostream& operator<<(std::ostream& output, {{name}} const& value) {
 		auto const string = internal__{{name}}__to_string(value);
 		return output << string;
 	}
+{{/has_to_string}}
+{{/synthetic}}
+{{/interfaces}}
+{{#interfaces}}
+{{^synthetic}}
+{{#attributes}}
+{{/attributes}}
 {{/synthetic}}
 {{/interfaces}}
 
@@ -45,13 +56,19 @@ namespace movies::v{{version}} {
 		    {{NAME}}_X(X_VALUE)
 #undef X_VALUE
 		    ;
+		converter::slot_optional_rvalue_from_python<{{name}}>{};
 {{/enums}}
 {{#interfaces}}
 {{^synthetic}}
 
 		class_<{{name}}>("{{name}}")
 {{#attributes}}
+{{#property}}
+			.add_property("{{name}}", make_getter(&{{interfaces.name}}::{{name}}))
+{{/property}}
+{{^property}}
 		    .def_readwrite("{{name}}", &{{interfaces.name}}::{{name}})
+{{/property}}
 {{/attributes}}
 {{#operations}}
 		    .def("{{name}}", {{\}}
@@ -62,7 +79,10 @@ namespace movies::v{{version}} {
 		    .staticmethod("{{name}}")
 {{/staticmethod}}
 {{/operations}}
+			.def("clone", internal__{{name}}__clone)
+{{#has_to_string}}
 			.def(str(self))
+{{/has_to_string}}
 		    ;
 {{#is_translatable}}
 
@@ -75,33 +95,4 @@ namespace movies::v{{version}} {
 {{/synthetic}}
 {{/interfaces}}
 	}
-{{#interfaces}}
-{{#operations}}
-{{#external}}
-{{#needs_proxy}}
-
-	{{alias}} proxy__{{#staticmethod}}static__{{/staticmethod}}{{interfaces.name}}__{{name}}({{\}}
-{{#arguments}}{{\}}
-{{#this}}{{interfaces.name}}{{^ext_attrs.mutable}} const{{/ext_attrs.mutable}}&{{/this}}{{\}}
-{{^this}}{{alias}}{{/this}} {{name}}{{^last}}, {{/last}}{{/arguments}}{{\}}
-	) {
-		return {{#staticmethod}}{{interfaces.name}}::{{/staticmethod}}{{\}}
-		{{^staticmethod}}{{#arguments}}{{#this}}{{name}}.{{/this}}{{/arguments}}{{/staticmethod}}{{\}}
-		{{name}}({{#arguments}}{{^this}}{{name}}{{^last}}, {{/last}}{{/this}}{{/arguments}});
-	}
-{{/needs_proxy}}
-{{/external}}
-{{/operations}}
-{{/interfaces}}
-{{#interfaces}}
-{{^synthetic}}
-
-	std::string internal__{{name}}__to_string({{name}} const& self) {
-		auto node = simpler(self.to_json());
-		std::u8string u8{};
-		json::write_json(u8, node, json::concise);
-		return as_ascii_string_v(u8);
-	}
-{{/synthetic}}
-{{/interfaces}}
 }  // namespace movies::v{{version}}

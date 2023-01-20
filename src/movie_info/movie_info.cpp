@@ -1,11 +1,18 @@
 // Copyright (c) 2023 midnightBITS
 // This code is licensed under MIT license (see LICENSE for details)
 
+#include <fmt/format.h>
 #include <io/file.hpp>
 #include <movies/db_info.hpp>
+#include <movies/image_url.hpp>
 #include <movies/movie_info.hpp>
 
 #include "impl.hpp"
+
+#if defined(MOVIES_HAS_NAVIGATOR)
+#include <tangle/uri.hpp>
+#include <utf/utf.hpp>
+#endif
 
 namespace movies::v1 {
 	namespace {
@@ -80,6 +87,84 @@ namespace movies::v1 {
 		                                 size_t max = string_view_type::npos) {
 			return split_impl<string_type>(sep, data, max);
 		}
+
+#if defined(MOVIES_HAS_NAVIGATOR)
+		using namespace tangle;
+
+		std::u8string lower(std::u8string_view str) {
+			auto wide = utf::as_u32(str);
+			for (auto& c : wide) {
+				if (c < 256) c = std::tolower(c);
+			}
+			return utf::as_u8(wide);
+		}
+
+		std::u8string extension(std::u8string_view str) {
+			auto src = uri{as_ascii_string_v(str)};
+
+			auto ext = lower(
+			    fs::path{as_fs_string_v(src.path())}.extension().u8string());
+			if (ext.empty() || ext == u8".jpeg"sv) ext = u8".jpg"sv;
+			return ext;
+		}
+#else
+		std::u8string extension(std::u8string_view) { return u8".jpg"s; }
+#endif
+
+		void remap_img(std::optional<image_url>& dst,
+		               string_view_type dirname,
+		               std::string_view filename) {
+			if (dst && (!dst->url || (dst->url && dst->url->empty())))
+				dst = std::nullopt;
+			if (!dst) return;
+
+			string_type result{};
+			auto ext = extension(*dst->url);
+			result.reserve(dirname.length() + filename.length() + ext.length() +
+			               1);
+			result.append(dirname);
+			result.push_back('/');
+			result.append(as_view(filename));
+			result.append(as_view(ext));
+			dst->path = std::move(result);
+		}
+
+		void remap_img(translatable<image_url>& dst,
+		               string_view_type dirname,
+		               std::string_view filename) {
+			for (auto& [lang, image] : dst) {
+				auto subdir = as_string_v(dirname);
+				if (!lang.empty()) {
+					subdir.push_back('/');
+					subdir.append(as_view(lang));
+				}
+				std::optional<image_url> sure{std::move(image)};
+				remap_img(sure, subdir, filename);
+				if (sure) image = std::move(*sure);
+			}
+		}
+
+		void remap_all(movies::image_info& self, string_view_type dirname) {
+			remap_img(self.highlight, dirname, "01-highlight"sv);
+			for (auto& [lang, poster] : self.poster.items) {
+				auto subdir = as_string_v(dirname);
+				if (!lang.empty()) {
+					subdir.push_back('/');
+					subdir.append(as_view(lang));
+				}
+				remap_img(poster.small, subdir, "00-poster-0_small"sv);
+				remap_img(poster.normal, subdir, "00-poster-1_normal"sv);
+				remap_img(poster.large, subdir, "00-poster-2_large"sv);
+			}
+
+			size_t index{};
+			for (auto& image : self.gallery) {
+				std::optional<image_url> sure{std::move(image)};
+				remap_img(sure, dirname,
+				          fmt::format("02-gallery-{:02}", index++));
+				if (sure) image = std::move(*sure);
+			}
+		}
 	}  // namespace
 
 	json::conv_result movie_info::load_postproc(std::string& dbg) {
@@ -140,8 +225,8 @@ namespace movies::v1 {
 
 		auto json = io::file::open(json_filename, "wb");
 		if (!json) {
-			std::cout << "Cannot open " << json_filename.string()
-			          << " for writing\n";
+			fmt::print("Cannot open {} for writing\n",
+			           as_ascii_view(json_filename.generic_u8string()));
 			return false;
 		}
 		json::write_json(json.get(), to_json(), json::four_spaces);
@@ -182,4 +267,21 @@ namespace movies::v1 {
 		}
 		return false;
 	}
+
+	void movie_info::map_images(string_view_type movie_id) {
+		remap_all(image, movie_id);
+	}
+
+#if defined(MOVIES_HAS_NAVIGATOR)
+	void movie_info::canonize_uris(tangle::uri const& base_url) {
+		if (!base_url.empty()) {
+			visit_image(image, [&](image_url& image) {
+				if (!image.url) return;
+				auto url = uri::canonical(
+				    as_ascii_string(std::move(*image.url)), base_url);
+				image.url = as_string_v(url.string());
+			});
+		}
+	}
+#endif
 }  // namespace movies::v1

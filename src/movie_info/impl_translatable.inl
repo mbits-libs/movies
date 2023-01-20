@@ -4,6 +4,18 @@
 #pragma once
 
 namespace movies::v1 {
+	template <typename T>
+	inline json::conv_result merge_one_prefixed(T& prev,
+	                                            T const& next,
+	                                            image_diff* image_changes) {
+		return prev.merge(next, image_changes);
+	}
+
+	template <typename T>
+	inline json::conv_result merge_one_prefixed(T& prev, T const& next) {
+		return prev.merge(next);
+	}
+
 	inline json::conv_result merge_one_prefixed(string_type& prev,
 	                                            string_type const& next) {
 		auto const changed = prev != next;
@@ -17,10 +29,23 @@ namespace movies::v1 {
 		return prev.merge(next, which_title);
 	}
 
+	template <typename T>
 	inline void merge_new_prefixed(std::string const& key,
-	                               string_type const& next,
-	                               translatable<string_type>& old_data,
+	                               T const& next,
+	                               translatable<T>& old_data,
 	                               json::conv_result& result) {
+		auto it = old_data.items.lower_bound(key);
+		if (it != old_data.end() && it->first == key) return;
+		result = json::conv_result::updated;
+		old_data.items.insert(it, {key, next});
+	}
+
+	template <typename T>
+	inline void merge_new_prefixed(std::string const& key,
+	                               T const& next,
+	                               translatable<T>& old_data,
+	                               json::conv_result& result,
+	                               image_diff* image_changes) {
 		auto it = old_data.items.lower_bound(key);
 		if (it != old_data.end() && it->first == key) return;
 		result = json::conv_result::updated;

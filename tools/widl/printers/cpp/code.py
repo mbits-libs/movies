@@ -101,6 +101,8 @@ class Visitor(ClassVisitor):
         )
         obj_ext_attrs = {**obj.ext_attrs}
         del (obj_ext_attrs["merge_with"],)
+        obj_ext_attrs["has_to_string"] = load_from != "none"
+
         attributes: list[AttributeInfo] = []
         for prop in obj.props:
             simple_type = _simple(prop.type)

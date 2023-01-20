@@ -207,15 +207,21 @@ namespace movies::v1 {
 	}
 
 	template <is_enum ValueType>
-	inline json::conv_result load(json::map const& data,
-	                              std::u8string const& key,
+	inline void store(json::map& dst,
+	                  json::string_view const& key,
+	                  std::optional<ValueType> const& value) {
+		if (value) v1::store(dst, key, *value);
+	}
+
+	template <is_enum ValueType>
+	inline json::conv_result load(json::node const& data,
 	                              ValueType& value,
 	                              std::string& dbg) {
 		using traits = enum_traits<ValueType>;
 
 		auto result = json::conv_result::ok;
-		auto json_str = json::cast<json::string>(data, key);
-		auto json_int = json::cast<long long>(data, key);
+		auto json_str = json::cast<json::string>(data);
+		auto json_int = json::cast<long long>(data);
 		if (!json_str && !json_int) return json::conv_result::failed;
 
 		if (json_str) {
@@ -229,6 +235,36 @@ namespace movies::v1 {
 			return json::conv_result::updated;
 		}
 		return json::conv_result::ok;
+	}
+
+	template <is_enum ValueType>
+	inline json::conv_result load(json::map const& src,
+	                              std::u8string const& key,
+	                              ValueType& value,
+	                              std::string& dbg) {
+		using traits = enum_traits<ValueType>;
+
+		auto it = src.find(key);
+		if (it == src.end()) return json::conv_result::opt;
+		auto res = v1::load(it->second, value, dbg);
+		json::append_name(res, key, dbg);
+		return res;
+	}
+
+	template <is_enum Payload>
+	inline json::conv_result load(json::map const& src,
+	                              json::string const& key,
+	                              std::optional<Payload>& value,
+	                              std::string& dbg) {
+		auto it = src.find(key);
+		if (it == src.end()) return json::conv_result::opt;
+		value = Payload{};
+		auto res = v1::load(it->second, *value, dbg);
+		if (res == json::conv_result::failed || res == json::conv_result::opt) {
+			value = std::nullopt;
+		}
+		json::append_name(res, key, dbg);
+		return res;
 	}
 
 	template <json::JsonStorableValue ValueType>
@@ -350,6 +386,13 @@ namespace movies::v1 {
 	inline json::conv_result merge(Enum& old_data,
 	                               Enum new_data,
 	                               Select which) {
+		return merge_int_ish(old_data, new_data, which);
+	}
+
+	inline json::conv_result merge(media_kind& old_data,
+	                               media_kind new_data,
+	                               prefer_details which) {
+		if (new_data == media_kind::movie) return json::conv_result::ok;
 		return merge_int_ish(old_data, new_data, which);
 	}
 

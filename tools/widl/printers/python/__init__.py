@@ -18,6 +18,10 @@ def simple_type(
     return Simple(py, alias=alias, proxy=proxy, in_arg=in_arg)
 
 
+def py_type(py: str):
+    return Simple(py, alias=f"boost::python::{py}", proxy=False, in_arg=True)
+
+
 simple_types = {
     "void": simple_type("None", alias="void"),
     "timestamp": simple_type("int", alias="date::sys_seconds"),
@@ -34,6 +38,10 @@ simple_types = {
     "string": simple_type("str", alias="string_type", in_arg=True),
     "string_view": simple_type("str", alias="string_type", proxy=True, in_arg=True),
     "ascii": simple_type("str", alias="std::string", in_arg=True),
+    "object": py_type("object"),
+    "dict": py_type("dict"),
+    "tuple": py_type("tuple"),
+    "list": py_type("list"),
 }
 
 
@@ -53,6 +61,7 @@ class AttributeInfo:
     type: str
     cpp_type: str
     ref: bool
+    property: bool
     ext_attrs: dict
     last: bool = False
 
@@ -88,6 +97,7 @@ class InterfaceInfo:
     is_vector: bool
     is_translatable: bool
     synthetic: bool
+    has_to_string: bool
 
     @property
     def has_constructor(self):
@@ -110,7 +120,7 @@ class CodeContext(TemplateContext):
 class PythonInterface(TypeVisitor):
     def __init__(self, project_types: dict[str, bool]):
         self.project_types = project_types
-        self.typing: set[str] = set()
+        self.typing: set[str] = {"Iterator", "Generic", "TypeVar"}
         self.vectors: set[str] = set()
         self.translatables: set[str] = set()
         self.in_vector = 0
@@ -262,6 +272,7 @@ def class_(
     is_translatable=False,
     is_vector=False,
     synthetic=True,
+    has_to_string=True,
 ):
     return InterfaceInfo(
         name,
@@ -270,6 +281,7 @@ def class_(
         is_vector=is_vector,
         is_translatable=is_translatable,
         synthetic=synthetic,
+        has_to_string=has_to_string,
     )
 
 
@@ -289,13 +301,14 @@ class Visitor(ClassVisitor):
         operations: list[OperationInfo] = []
         for prop in obj.props:
             type_name = _py_type(prop.type, self.info.project_types)
-            alias, proxy, in_arg = _arg_type(prop.type, self.info.project_types)
+            type_info = _arg_type(prop.type, self.info.project_types, {})
             attributes.append(
                 AttributeInfo(
                     name=prop.name,
                     type=type_name,
-                    cpp_type=alias,
-                    ref=in_arg,
+                    cpp_type=type_info.alias,
+                    ref=type_info.in_arg,
+                    property=type_info.needs_property,
                     ext_attrs=prop.ext_attrs,
                 )
             )
@@ -306,18 +319,25 @@ class Visitor(ClassVisitor):
             needs_proxy = False
             arguments: list[ArgumentInfo] = []
             for arg in op.args:
-                alias, proxy, in_arg = _arg_type(arg.type, self.info.project_types)
-                needs_proxy = needs_proxy or proxy
-                if in_arg:
-                    alias = f"{alias} const&"
+                # alias, proxy, in_arg, out_arg, _
+                type_info = _arg_type(arg.type, self.info.project_types, arg.ext_attrs)
+                needs_proxy = needs_proxy or type_info.proxy
+                if type_info.out_arg:
+                    type_info.alias = f"{type_info.alias}&"
+                elif type_info.in_arg:
+                    type_info.alias = f"{type_info.alias} const&"
                 arguments.append(
-                    arg_(arg.name, _py_type(arg.type, self.info.project_types), alias)
+                    arg_(
+                        arg.name,
+                        _py_type(arg.type, self.info.project_types),
+                        type_info.alias,
+                    )
                 )
             if len(arguments):
                 arguments[-1].last = True
             staticmethod = op.ext_attrs["static"]
             ctor_ = staticmethod_ if staticmethod else method_
-            alias = _arg_type(op.type, self.info.project_types)[0]
+            alias = _arg_type(op.type, self.info.project_types, {}).alias
             operations.append(
                 ctor_(
                     op.name,
@@ -338,6 +358,7 @@ class Visitor(ClassVisitor):
                 is_vector=obj.name in self.info.vectors,
                 is_translatable=is_translatable,
                 synthetic=False,
+                has_to_string=obj.ext_attrs["from"] != "none",
             )
         )
 
@@ -355,6 +376,7 @@ class Visitor(ClassVisitor):
                         type=f"translatable_{name}_items",
                         cpp_type="",
                         ref=False,
+                        property=False,
                         ext_attrs={},
                     )
                 ],
@@ -397,7 +419,9 @@ class Visitor(ClassVisitor):
                         type="None",
                         arguments=[arg_("index", type=key), arg_("object", type=value)],
                     ),
-                    method_("__iter__"),
+                    method_(
+                        "__iter__", type=f"Iterator[map_indexing_suite_{name}_entry]"
+                    ),
                     method_("__len__", type="int"),
                 ],
             )
@@ -434,7 +458,7 @@ class PythonTypes(TypeVisitor):
 
     def on_translatable(self, obj: WidlTranslatable):
         sub = self.on_subtype(obj)
-        return f"translatable_{sub}"
+        return f"Translatable[{sub}]"
 
     def on_simple(self, obj: WidlSimple):
         if obj.text in self.project_names:
@@ -447,31 +471,63 @@ def _py_type(widl: WidlType, project_names: dict[str, bool]):
 
 
 @dataclass
+class CxxTypeInfo:
+    alias: str
+    proxy: bool
+    in_arg: bool
+    out_arg: bool
+    needs_property: bool
+    project_type: bool
+
+
+@dataclass
 class CxxArgTypes(TypeVisitor):
     project_names: dict[str, bool]
+    ext_attr: dict
 
     def on_optional(self, obj: WidlOptional):
-        sub, proxy, _ = self.on_subtype(obj)
-        return f"std::optional<{sub}>", proxy, True
+        type_info: CxxTypeInfo = self.on_subtype(obj)
+        type_info.alias = f"std::optional<{type_info.alias}>"
+        type_info.in_arg = True
+        type_info.needs_property |= type_info.project_type
+        return type_info
 
     def on_sequence(self, obj: WidlSequence):
-        sub, proxy, _ = self.on_subtype(obj)
-        return f"std::vector<{sub}>", proxy, True
+        type_info: CxxTypeInfo = self.on_subtype(obj)
+        type_info.alias = f"std::vector<{type_info.alias}>"
+        type_info.in_arg = True
+        return type_info
 
     def on_translatable(self, obj: WidlTranslatable):
-        sub, proxy, _ = self.on_subtype(obj)
-        return f"translatable<{sub}>", proxy, True
+        type_info: CxxTypeInfo = self.on_subtype(obj)
+        type_info.alias = f"translatable<{type_info.alias}>"
+        type_info.in_arg = True
+        return type_info
 
     def on_simple(self, obj: WidlSimple):
         if obj.text in self.project_names:
-            return obj.text, False, self.project_names[obj.text]
+            in_arg = self.project_names[obj.text]
+            out_arg = self.ext_attr.get("out", False)
+            return CxxTypeInfo(
+                alias=obj.text,
+                proxy=False,
+                in_arg=in_arg,
+                out_arg=out_arg,
+                needs_property=False,
+                project_type=True,
+            )
         simple = simple_types[obj.text]
-        return (
-            simple.alias if simple.alias is not None else simple.py,
-            simple.proxy,
-            simple.in_arg,
+        return CxxTypeInfo(
+            alias=simple.alias if simple.alias is not None else simple.py,
+            proxy=simple.proxy,
+            in_arg=simple.in_arg,
+            out_arg=False,
+            needs_property=False,
+            project_type=False,
         )
 
 
-def _arg_type(widl: WidlType, project_names: dict[str, bool]):
-    return widl.on_type_visitor(CxxArgTypes(project_names))
+def _arg_type(
+    widl: WidlType, project_names: dict[str, bool], ext_attr: dict
+) -> CxxTypeInfo:
+    return widl.on_type_visitor(CxxArgTypes(project_names, ext_attr))

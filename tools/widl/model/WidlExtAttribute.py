@@ -116,7 +116,7 @@ class Guards:
         self.default = []
 
     def __call__(self, attr: WidlExtAttribute):
-        if len(attr.args) > 0:
+        if len(attr.args) < 0:
             error(attr.name.pos, "`{}' requires at least 1 argument".format(self.name))
         return [arg.s if arg.s is not None else arg.code for arg in attr.args]
 
@@ -156,7 +156,7 @@ def enum_ext_attrs(_: list[WidlExtAttribute]):
 
 
 _interface_ext_attrs = [
-    SingleArg("from", ["node", "map"], "map"),
+    SingleArg("from", ["node", "map", "none"], "map"),
     SingleArg("merge", ["manual", "none", "auto"], "auto"),
     MergeWith(),
     FlagArg("spaceship"),

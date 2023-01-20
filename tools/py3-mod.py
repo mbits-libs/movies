@@ -19,6 +19,7 @@ def open_file(path: str):
 idl_paths = sys.argv[2:]
 root = sys.argv[1]
 code_path = os.path.join(root, "src", "py3", "movies_generated.cpp")
+impl_path = os.path.join(root, "src", "py3", "movies_generated_impl.cpp")
 stub_path = os.path.join(root, "modules", "movies.pyi")
 
 
@@ -32,6 +33,10 @@ ctx.gather_from(objects)
 with open_file(code_path) as output:
     ctx.output = output
     ctx.emit("code.mustache")
+
+with open_file(impl_path) as output:
+    ctx.output = output
+    ctx.emit("code_impl.mustache")
 
 with open_file(stub_path) as output:
     ctx.output = output

@@ -1,15 +1,19 @@
 #pragma once
 
 #include <date/date.h>
+#include <fmt/format.h>
 #include <boost/python/class.hpp>
 #include <boost/python/converter/builtin_converters.hpp>
 #include <boost/python/converter/registry.hpp>
 #include <boost/python/converter/return_from_python.hpp>
+#include <boost/python/dict.hpp>
 #include <boost/python/enum.hpp>
 #include <boost/python/make_constructor.hpp>
+#include <boost/python/object.hpp>
 #include <boost/python/scope.hpp>
 #include <boost/python/suite/indexing/map_indexing_suite.hpp>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
+#include <boost/python/tuple.hpp>
 #include <optional>
 
 #define BOOST_PYTHON_RETURN_TO_PYTHON_BY_VALUE(T, expr, pytype)            \
@@ -141,6 +145,72 @@ namespace boost::python {
 		struct arg_to_python<std::optional<T>> : handle<> {
 			arg_to_python(std::optional<T> const& x)
 			    : python::handle<>(x ? arg_to_python<T>(*x) : object{}) {}
+		};
+
+		template <class T>
+		struct slot_optional_rvalue_from_python {
+		public:
+			slot_optional_rvalue_from_python() {
+				auto const inner = registry::query(type_id<T>());
+				if (!inner) return;  // TODO: or throw?
+				registry::insert(
+				    &slot_optional_rvalue_from_python<T>::convertible,
+				    &slot_optional_rvalue_from_python<T>::construct,
+				    type_id<std::optional<T>>(),
+				    inner->m_to_python_target_type);
+			}
+
+		private:
+			static void* py_none_unaryfunc(PyObject*) {
+				return python::incref(Py_None);
+			};
+			static void* convertible(PyObject* obj) {
+				auto const inner = registry::query(type_id<T>());
+				if (!inner) return nullptr;
+				if (obj == Py_None)
+					return reinterpret_cast<void*>(&py_none_unaryfunc);
+				return inner->rvalue_chain->convertible(obj);
+			}
+
+			static void construct(PyObject* obj,
+			                      rvalue_from_python_stage1_data* data) {
+				if (obj == Py_None) return construct_nullopt(data);
+				return_from_python<T> converter;
+
+				// Get the location in which to construct
+				void* storage =
+				    ((rvalue_from_python_storage<T>*)data)->storage.bytes;
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+				new (storage) std::optional<T>(converter(incref(obj)));
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+				// record successful construction
+				data->convertible = storage;
+			}
+
+			static void construct_nullopt(
+			    rvalue_from_python_stage1_data* data) {
+				void* storage =
+				    ((rvalue_from_python_storage<std::optional<T>>*)data)
+				        ->storage.bytes;
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+				new (storage) std::optional<T>(std::nullopt);
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+				// record successful construction
+				data->convertible = storage;
+			}
 		};
 
 		void initialize_movies_converters();

@@ -2,10 +2,29 @@ partial interface movie_info {
     [throws] bool store([in] path db_root, string_view key);
     [throws, mutable] conv_result load([in] path db_root, string_view key, [in] alpha_2_aliases aka, [in, out] ascii dbg);
     [throws, mutable] bool map_countries([in] alpha_2_aliases aka);
-    [throws, mutable, guard=MOVIES_HAS_NAVIGATOR]
-    bool offline_images([in] path root, [out] navigator nav, [in] uri referrer, string_view dirname);
+    [throws, mutable] void map_images(string_view movie_id);
+    [throws, mutable, guards("MOVIES_HAS_NAVIGATOR")] void canonize_uris([in] uri base_url);
+    [throws, mutable, guards("MOVIES_HAS_NAVIGATOR")]
+    bool download_images([in] path db_root, [out] navigator nav, [in, out] image_diff diff, string_view movie_id, [in] uri referer, bool debug);
 };
 
 partial interface video_marker {
     bool equiv([in] video_marker rhs);
+};
+
+partial interface image_diff {
+    attribute sequence<image_operation> ops;
+};
+
+[merge=none, from=none]
+interface image_operation {
+    attribute image_op op;
+    attribute string src;
+    attribute string dst;
+};
+
+enum image_op {
+    "rm",
+    "move",
+    "download"
 };

@@ -19,7 +19,7 @@ namespace movies::v{{version}} {
 
 	enum class {{name}} {
 #define X_DECL_TYPE(NAME) NAME,
-	    {{NAME}}_X(X_DECL_TYPE)
+		{{NAME}}_X(X_DECL_TYPE)
 #undef X_DECL_TYPE
 	};
 {{/ enums}}
@@ -37,7 +37,7 @@ namespace movies::v{{version}} {
 #if {{#guards}}defined({{guards}}){{/guards}}
 
 {{/guards}}
-        {{type}} {{name}}{{default}};
+		{{type}} {{name}}{{default}};
 {{? guards}}
 #endif
 {{/guards}}
@@ -48,23 +48,27 @@ namespace movies::v{{version}} {
 {{/operations}}
 {{/attributes}}
 {{#operations}}
+{{#ext_attrs}}
 {{? guards}}
 #if {{#guards}}defined({{guards}}){{/guards}}
 
 {{/guards}}
-        {{? ext_attrs.static}}static {{/ext_attrs.static}}{{type}} {{\}}
-        {{name}}({{\}}
-            {{#args}}{{type}}{{\}}
-            {{?ext_attrs.out}}&{{/ext_attrs.out}}{{\}}
-            {{^ext_attrs.out}}{{?ext_attrs.in}} const&{{/ext_attrs.in}}{{/ext_attrs.out}} {{\}}
-            {{name}}{{? comma}}, {{/comma}}{{/args}}{{\}}
-        ){{^ext_attrs.mutable}}{{^ ext_attrs.static}} const{{/ext_attrs.static}}{{/ext_attrs.mutable}}{{\}}
-        {{^ext_attrs.throws}} noexcept{{/ext_attrs.throws}}{{\}}
-        {{?ext_attrs.defaulted}} = default{{/ext_attrs.defaulted}}{{\}}
-        ;
+{{/ext_attrs}}
+		{{? ext_attrs.static}}static {{/ext_attrs.static}}{{type}} {{\}}
+		{{name}}({{\}}
+			{{#args}}{{type}}{{\}}
+			{{?ext_attrs.out}}&{{/ext_attrs.out}}{{\}}
+			{{^ext_attrs.out}}{{?ext_attrs.in}} const&{{/ext_attrs.in}}{{/ext_attrs.out}} {{\}}
+			{{name}}{{? comma}}, {{/comma}}{{/args}}{{\}}
+		){{^ext_attrs.mutable}}{{^ ext_attrs.static}} const{{/ext_attrs.static}}{{/ext_attrs.mutable}}{{\}}
+		{{^ext_attrs.throws}} noexcept{{/ext_attrs.throws}}{{\}}
+		{{?ext_attrs.defaulted}} = default{{/ext_attrs.defaulted}}{{\}}
+		;
+{{#ext_attrs}}
 {{? guards}}
 #endif
 {{/guards}}
+{{/ext_attrs}}
 {{/operations}}
 	};
 {{/ interfaces}}

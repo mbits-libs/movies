@@ -1,10 +1,17 @@
 partial interface movie_info {
-    [mutable, external] bool merge(
+    [mutable, external] tuple merge(
         movie_info new_data,
         prefer_title which_title,
-        prefer_details which_details);
-    [external] string as_string();
+        prefer_details which_details, string movie_id, string? base_url);
+    [external] string json();
     [external] void store_at(string path);
     [static, external] movie_info loads(string json);
     [static, external] movie_info load_from(string path);
+    [mutable, external] bool download_images(string db_root, [out] image_diff diff, string movie_id, string referer);
+};
+
+partial interface poster_info {
+    [mutable, external] void assign_small([in] image_url address);
+    [mutable, external] void assign_normal([in] image_url address);
+    [mutable, external] void assign_large([in] image_url address);
 };
