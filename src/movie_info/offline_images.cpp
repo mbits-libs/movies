@@ -168,6 +168,8 @@ namespace movies::v1 {
 		fs::create_directories(img_root / movie_id, ec);
 		if (ec) return false;
 
+		auto const host = referer.parsed_authority().host;
+
 		auto mapping = reorganize(diff);
 		fs_ops ops{};
 		std::set<std::chrono::sys_seconds> mtimes{};
@@ -186,15 +188,26 @@ namespace movies::v1 {
 					break;
 				case image_op::download: {
 					if (dst.empty() || action.src.empty()) break;
-					auto const url = as_ascii_view(action.src);
+					auto const address = as_ascii_view(action.src);
+					auto const url = uri{address};
+
+					if (!host.empty()) {
+						auto const current_host = url.parsed_authority().host;
+						if (current_host != host) {
+							// TODO: referer and addres could have the same
+							// super-domain? (but more than TLD)
+							continue;
+						}
+					}
+
 					if (debug)
 						fmt::print(stderr, "-- download {} from {}\n",
-						           as_ascii_view(dst), url);
+						           as_ascii_view(dst), address);
 					auto img = nav.open(prepare_request(url, referer));
 					if (!img.exists()) {
 						fmt::print(stderr,
-						           "Cannot download image from {}: {}\n", url,
-						           img.status_text());
+						           "Cannot download image from {}: {}\n",
+						           address, img.status_text());
 						continue;
 					}
 
