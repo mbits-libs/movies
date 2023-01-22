@@ -253,9 +253,10 @@ namespace movies::v1 {
 		return result;
 	}
 
-#define OPT(CURR, NEW)                \
-	OP(CURR&& NEW ? CURR->merge(*NEW) \
-	              : (CURR = NEW, json::conv_result::updated))
+#define OPT(CURR, NEW)                                       \
+	OP(CURR&& NEW ? CURR->merge(*NEW)                        \
+	   : NEW      ? (CURR = NEW, json::conv_result::updated) \
+	              : json::conv_result::ok)
 
 	json::conv_result poster_info::merge(poster_info const& new_data) {
 		auto result = json::conv_result::ok;
