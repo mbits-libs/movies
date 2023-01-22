@@ -3,6 +3,9 @@ Language:        Cpp
 BasedOnStyle:  Chromium
 AccessModifierOffset: -4
 AllowShortIfStatementsOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortLambdasOnASingleLine: All
 BreakConstructorInitializersBeforeComma: true
 IndentWidth:     4
 NamespaceIndentation: All
