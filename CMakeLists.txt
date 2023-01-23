@@ -77,7 +77,6 @@ set(MOVIES_SRCS
     inc/movies/diff.hpp
     inc/movies/fwd.hpp
     inc/movies/image_url.hpp
-    inc/movies/loader.hpp
     inc/movies/types.hpp
     inc/movies/opt.hpp
 

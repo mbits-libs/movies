@@ -1,61 +1,69 @@
 // Copyright (c) 2021 midnightBITS
 // This code is licensed under MIT license (see LICENSE for details)
 
+#include <io/file.hpp>
 #include <iostream>
 #include <movies/db_info.hpp>
 #include <movies/diff.hpp>
-#include <movies/loader.hpp>
-
-// #define DEBUG_LOADER
-#ifdef DEBUG_LOADER
-#include <format>
-#include <io/file.hpp>
-#include <movies/opt.hpp>
-#endif
+#include "movie_info/impl.hpp"
 
 using namespace std::literals;
 
 namespace movies {
 	namespace {
-#ifdef DEBUG_LOADER
-		inline auto file_ref_mtime(movies::file_ref const& ref) {
-			return ref.mtime;
+		template <typename TimePoint>
+		auto pre_20_file_time_type(TimePoint const& fs) {
+			using namespace std::chrono;
+			if constexpr (std::same_as<TimePoint, system_clock::time_point>) {
+				return date::floor<seconds>(fs);
+			} else {
+				auto wall = time_point_cast<system_clock::duration>(
+				    fs - TimePoint::clock::now() + system_clock::now());
+				return date::floor<seconds>(wall);
+			}
 		}
-#endif
 
-		fs::file_time_type get_mtime(fs::path const& path) {
+		inline auto fs2wall(std::filesystem::file_time_type const& fs) {
+#if __cpp_lib_chrono >= 201907L
+			using namespace std::chrono;
+			auto const wall = clock_cast<system_clock>(fs);
+			return floor<seconds>(wall);
+#else
+			return pre_20_file_time_type(fs);
+#endif
+		}
+
+		date::sys_seconds get_mtime(fs::path const& path) {
 			std::error_code ec{};
 			auto const result = fs::last_write_time(path, ec);
 			if (ec) return {};
-			return result;
+			return fs2wall(result);
 		}
 
 		file_ref get_ref(fs::path const& path, fs_string const& id) {
-			return {id, get_mtime(path)};
+			return {as_string_v(id), get_mtime(path)};
 		}
 
-		file_ref info_ref(fs::path const& db_root, fs_string const& id) {
-			return get_ref(db_root / "nfo"sv / (id + u8".json"), id);
+		file_ref info_ref(movies_dirs const& dirs, fs_string const& id) {
+			return get_ref(dirs.infos / (id + u8".json"), id);
 		}
 
-		file_ref video_ref(fs::path const& videos_root, fs_string const& id) {
-			auto mp4 = videos_root / (id + u8".mp4");
+		file_ref video_ref(movies_dirs const& dirs, fs_string const& id) {
+			auto mp4 = dirs.videos / (id + u8".mp4");
 			if (std::filesystem::exists(mp4)) return get_ref(mp4, id);
-			auto mkv = videos_root / (id + u8".mkv");
+			auto mkv = dirs.videos / (id + u8".mkv");
 			if (std::filesystem::exists(mkv)) return get_ref(mkv, id);
 			return get_ref(mp4, id);
 		}
 
-		map<fs_string, movie_info> known_movies(fs::path const& db_root,
+		map<fs_string, movie_info> known_movies(movies_dirs const& dirs,
 		                                        bool store_updates) {
 			map<fs_string, movie_info> result{};
 			alpha_2_aliases aka{};
-			aka.load(db_root);
-
-			auto root = db_root / "nfo"sv;
+			aka.load(dirs.infos / ".."sv);
 
 			std::error_code ec{};
-			fs::recursive_directory_iterator iterator{root, ec};
+			fs::recursive_directory_iterator iterator{dirs.infos, ec};
 			if (ec) return result;
 
 			static constexpr auto ext = u8".json"sv;
@@ -63,17 +71,18 @@ namespace movies {
 				if (fs::is_directory(entry.status())) continue;
 				if (entry.path().extension().u8string() != ext) continue;
 				auto const& json_path = entry.path();
-				auto u8ident = fs::relative(json_path, root).generic_u8string();
+				auto u8ident =
+				    fs::relative(json_path, dirs.infos).generic_u8string();
 				u8ident = u8ident.substr(0, u8ident.length() - ext.length());
 
 				movie_info info{};
 				std::string debug{};
 				auto const load_result =
-				    info.load(db_root, as_view(u8ident), aka, debug);
+				    info.load(dirs.infos, as_view(u8ident), aka, debug);
 				if (load_result == json::conv_result::failed) continue;
 				if (load_result == json::conv_result::updated) {
 					if (store_updates) {
-						info.store(db_root, as_view(u8ident));
+						info.store(dirs.infos, as_view(u8ident));
 						fputc('.', stdout);
 						fflush(stdout);
 					} else {
@@ -89,11 +98,11 @@ namespace movies {
 			return result;
 		}
 
-		vector<fs_string> downloaded_movies(fs::path const& videos_root) {
+		vector<fs_string> downloaded_movies(movies_dirs const& dirs) {
 			vector<fs_string> result{};
 
 			std::error_code ec{};
-			fs::recursive_directory_iterator iterator{videos_root, ec};
+			fs::recursive_directory_iterator iterator{dirs.videos, ec};
 			if (ec) return result;
 
 			for (auto&& entry : iterator) {
@@ -102,7 +111,7 @@ namespace movies {
 				if (ext != u8".mp4"sv && ext != u8".mkv") continue;
 				auto const& movie_path = entry.path();
 				auto u8ident =
-				    fs::relative(movie_path, videos_root).generic_u8string();
+				    fs::relative(movie_path, dirs.videos).generic_u8string();
 				u8ident = u8ident.substr(0, u8ident.length() - ext.length());
 				result.emplace_back(std::move(u8ident));
 			}
@@ -172,9 +181,9 @@ namespace movies {
 			return result;
 		}
 
-		movie_data make_empty(std::optional<file_ref> const& video_file,
-		                      std::optional<file_ref> const& info_file) {
-			movie_data result{{}, video_file, info_file};
+		loaded_movie make_empty(std::optional<file_ref> const& video_file,
+		                        std::optional<file_ref> const& info_file) {
+			loaded_movie result{{}, video_file, info_file};
 			if (video_file)
 				result.title.items[{}].text = make_title(video_file->id);
 			else if (info_file)
@@ -199,100 +208,146 @@ namespace movies {
 			return result;
 		}
 
-#ifdef DEBUG_LOADER
-		json::string to_string(fs::file_time_type mtime) {
-			using namespace std::chrono;
-			auto const sys = duration_cast<seconds>(
-			    clock_cast<system_clock>(mtime).time_since_epoch());
-			auto local =
-			    zoned_time{current_zone(), sys_seconds{sys}}.get_local_time();
-			auto result = std::format("{:%F %T}", local);
-			return {reinterpret_cast<char8_t const*>(result.data()),
-			        result.length()};
-		}
-#endif
+		struct db_type_traits
+		    : public enum_traits_helper<db_type_traits, db_type> {
+			using helper = enum_traits_helper<db_type_traits, db_type>;
+			using name_type = helper::name_type;
+			static std::span<name_type const> names() noexcept {
+				static constexpr name_type enum_names[] = {
+#define X_NAME(NAME) {u8## #NAME##sv, db_type::NAME},
+				    DB_TYPE_X(X_NAME)
+#undef X_NAME
+				};
+				return {std::data(enum_names), std::size(enum_names)};
+			}
+		};
+
+		static constexpr auto DIR_DB = "db"sv;
+		static constexpr auto DIR_NFO = "nfo"sv;
+		static constexpr auto DIR_IMG = "img"sv;
+		static constexpr auto DIR_VIDEOS = "videos"sv;
 	}  // namespace
 
-	vector<movie_data> load_from(fs::path const& db_root,
-	                             fs::path const& videos_root,
-	                             bool store_updates) {
-		auto jsons = known_movies(db_root, store_updates);
+	void movies_config::read(fs::path const& config_filename,
+	                         callback const& cb) {
+		auto const data = io::contents(config_filename);
+		auto node = json::read_json({data.data(), data.size()});
+		auto json_path_str = cast<json::string>(node, u8"path"s);
+		auto json_path_dict = cast<json::map>(node, u8"path"s);
+
+		auto json_title = cast<json::string>(node, u8"title"s);
+		auto json_adult = cast<json::string>(node, u8"adult"s);
+
+		fs::path cfg_dir = config_filename.parent_path();
+
+		*this = movies_config{};
+		if (json_title) title = as_string_v(*json_title);
+		if (json_adult) adult = db_type_traits::value_for(*json_adult);
+
+#define DIR_NFO__ cfg_dir / DIR_DB / DIR_NFO
+#define DIR_IMG__ cfg_dir / DIR_DB / DIR_IMG
+#define DIR_VIDEOS__ cfg_dir / DIR_VIDEOS
+
+		if (json_path_str) {
+			cfg_dir /= as_fs_view(*json_path_str);
+			dirs.infos = DIR_NFO__;
+			dirs.images = DIR_IMG__;
+			dirs.videos = DIR_VIDEOS__;
+		} else if (json_path_dict) {
+			auto json_path_db = cast<json::string>(node, u8"db"s);
+			auto json_path_nfo = cast<json::string>(node, u8"nfo"s);
+			auto json_path_img = cast<json::string>(node, u8"img"s);
+			auto json_path_video = cast<json::string>(node, u8"video"s);
+
+			dirs.infos = json_path_nfo ? cfg_dir / as_fs_view(*json_path_nfo)
+			             : json_path_db
+			                 ? cfg_dir / as_fs_view(*json_path_db) / DIR_NFO
+			                 : DIR_NFO__;
+
+			dirs.images = json_path_img ? cfg_dir / as_fs_view(*json_path_img)
+			              : json_path_db
+			                  ? cfg_dir / as_fs_view(*json_path_db) / DIR_IMG
+			                  : DIR_IMG__;
+			dirs.videos = json_path_video
+			                  ? cfg_dir / as_fs_view(*json_path_video)
+			                  : DIR_VIDEOS__;
+		} else {
+			dirs.infos = DIR_NFO__;
+			dirs.images = DIR_IMG__;
+			dirs.videos = DIR_VIDEOS__;
+		}
+
+#undef DIR_NFO__
+#undef DIR_IMG__
+#undef DIR_VIDEOS__
+
+		if (cb) cb(*this, cfg_dir, node);
+	}
+
+	movies_config movies_config::from_dirs(
+	    std::optional<fs::path> const& db_dir,
+	    std::optional<fs::path> const& videos_dir) {
+		auto db = db_dir ? *db_dir : fs::path{DIR_DB};
+		movies_config result{
+		    .dirs = {
+		        .infos = db / DIR_NFO,
+		        .images = db / DIR_IMG,
+		        .videos = videos_dir ? *videos_dir : fs::path{"videos"sv},
+
+		    }};
+		return result;
+	}
+
+	vector<loaded_movie> movies_config::load(bool store_updates) const {
+		auto jsons = known_movies(dirs, store_updates);
 		auto infos = keys_of(jsons);
-		auto videos = downloaded_movies(videos_root);
+		auto videos = downloaded_movies(dirs);
 
 		auto both = split_simple(infos, videos);
 		auto matching = differ{jsons, infos, videos}.calc();
 
-		vector<movie_data> movies{};
+		vector<loaded_movie> movies{};
 		movies.reserve(both.size() + matching.size() + infos.size() +
 		               videos.size());
 
 		for (auto const& id : both) {
 			auto it = jsons.find(id);
 			if (it == jsons.end()) {
-				[[unlikely]] movies.push_back(make_empty(
-				    video_ref(videos_root, id), info_ref(db_root, id)));
+				[[unlikely]] movies.push_back(
+				    make_empty(video_ref(dirs, id), info_ref(dirs, id)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back({std::move(mv), video_ref(videos_root, id),
-			                  info_ref(db_root, id)});
+			movies.push_back(
+			    {std::move(mv), video_ref(dirs, id), info_ref(dirs, id)});
 		}
 
 		for (auto const& diff : matching) {
 			auto it = jsons.find(diff.info);
 			if (it == jsons.end()) {
-				[[unlikely]] movies.push_back(
-				    make_empty(video_ref(videos_root, diff.video),
-				               info_ref(db_root, diff.info)));
+				[[unlikely]] movies.push_back(make_empty(
+				    video_ref(dirs, diff.video), info_ref(dirs, diff.info)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back({std::move(mv), video_ref(videos_root, diff.video),
-			                  info_ref(db_root, diff.info)});
+			movies.push_back({std::move(mv), video_ref(dirs, diff.video),
+			                  info_ref(dirs, diff.info)});
 		}
 
 		for (auto const& id : videos)
-			movies.push_back(
-			    make_empty(video_ref(videos_root, id), std::nullopt));
+			movies.push_back(make_empty(video_ref(dirs, id), std::nullopt));
 
 		for (auto const& id : infos) {
 			auto it = jsons.find(id);
 			if (it == jsons.end()) {
 				[[unlikely]] movies.push_back(
-				    make_empty(std::nullopt, info_ref(db_root, id)));
+				    make_empty(std::nullopt, info_ref(dirs, id)));
 				continue;
 			}
 			auto& mv = it->second;
-			movies.push_back(
-			    {std::move(mv), std::nullopt, info_ref(db_root, id)});
+			movies.push_back({std::move(mv), std::nullopt, info_ref(dirs, id)});
 		}
 
-#ifdef DEBUG_LOADER
-		{
-			std::map<json::string, json::array> dbg{};
-			for (auto const& data : movies) {
-				auto const key =
-				    (data.video_file || data.info_file) >> file_ref_mtime ||
-				    fs::file_time_type{};
-				auto const& title = data.info.title;
-				auto value =
-				    title.local || title.orig || title.sort || string{};
-				dbg[to_string(key)].push_back(std::move(value));
-			}
-			json::map dbg_map{};
-			for (auto& [key, titles] : dbg) {
-				if (titles.size() == 1) {
-					dbg_map[key] = std::move(titles[0]);
-					continue;
-				}
-				dbg_map[key] = std::move(titles);
-			}
-
-			auto file = io::file::open("debug.json", "w");
-			json::write_json(file.get(), dbg_map);
-		}
-#endif
 		return movies;
 	}
 }  // namespace movies

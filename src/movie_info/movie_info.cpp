@@ -214,9 +214,9 @@ namespace movies::v1 {
 		return (it != tags.end());
 	}
 
-	bool movie_info::store(fs::path const& db_root,
+	bool movie_info::store(fs::path const& nfo_root,
 	                       string_view_type key) const {
-		auto const json_filename = db_root / "nfo"sv / make_json(key);
+		auto const json_filename = nfo_root / make_json(key);
 
 		std::error_code ec{};
 
@@ -233,11 +233,11 @@ namespace movies::v1 {
 		return true;
 	}
 
-	json::conv_result movie_info::load(fs::path const& db_root,
+	json::conv_result movie_info::load(fs::path const& nfo_root,
 	                                   string_view_type key,
 	                                   alpha_2_aliases const& aka,
 	                                   std::string& dbg) {
-		auto const json_filename = db_root / "nfo"sv / make_json(key);
+		auto const json_filename = nfo_root / make_json(key);
 
 		auto const data = io::contents(json_filename);
 		auto node = json::read_json({data.data(), data.size()});

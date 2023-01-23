@@ -97,6 +97,32 @@ interface video_marker {
     [default="marker_type::bookmark"] attribute marker_type type;
 };
 
+[nonjson, cpp_quote("using callback = std::function<void(movies_config&, std::filesystem::path const&, json::node const&)>;")]
+interface movies_config {
+	attribute string title;
+	attribute db_type adult;
+	attribute movies_dirs dirs;
+};
+
+[nonjson]
+interface movies_dirs {
+	attribute path infos;
+	attribute path images;
+	attribute path videos;
+};
+
+[nonjson]
+interface loaded_movie : movie_info {
+	attribute file_ref? video_file;
+	attribute file_ref? info_file;
+};
+
+[nonjson]
+interface file_ref {
+	attribute string id;
+	attribute timestamp mtime;
+};
+
 enum prefer_title { "mine", "theirs" };
 
 enum prefer_details { "mine", "theirs" };
@@ -109,4 +135,8 @@ enum marker_type {
 	"credits",
 	"credits_scene",
 	"chapter",
+};
+
+enum db_type {
+	"mixed", "safe", "unsafe"
 };

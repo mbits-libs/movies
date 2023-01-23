@@ -1,12 +1,10 @@
 // Copyright (c) 2023 midnightBITS
 // This code is licensed under MIT license (see LICENSE for details)
 
-#include <movies/movie_info.hpp>
-
+#include "impl.hpp"
 #include <fmt/format.h>
 #include <movies/image_url.hpp>
 #include <set>
-#include "impl.hpp"
 #include "person_info.hpp"
 
 #if defined(MOVIES_HAS_NAVIGATOR)

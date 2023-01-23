@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <movies/movie_info.hpp>
 #include <movies/opt.hpp>
 #include <span>
 
