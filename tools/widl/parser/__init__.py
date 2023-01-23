@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 import sys
 import string
 from ..types import file_pos, Token, partial_token, token
@@ -218,7 +218,11 @@ def _read_extended_attrs(parser: _Parser) -> list[WidlExtAttribute]:
 
 
 def _read_enum(
-    parser: _Parser, name: str, ext_attrs: list[WidlExtAttribute], pos: file_pos
+    parser: _Parser,
+    name: str,
+    ext_attrs: list[WidlExtAttribute],
+    _: Optional[str],
+    pos: file_pos,
 ) -> WidlClass:
     items: list[str] = []
     while not parser.eof:
@@ -306,7 +310,11 @@ def _read_operation(
 
 
 def _read_interface(
-    parser: _Parser, name: str, ext_attrs: list[WidlExtAttribute], pos: file_pos
+    parser: _Parser,
+    name: str,
+    ext_attrs: list[WidlExtAttribute],
+    inheritance: Optional[str],
+    pos: file_pos,
 ) -> WidlClass:
     attribs: list[WidlAttribute] = []
     operations: list[WidlOperation] = []
@@ -316,7 +324,7 @@ def _read_interface(
         code = tok.value.code
         if code == "}":
             parser.put_back()
-            return WidlInterface(name, attribs, operations, ext_attrs, pos)
+            return WidlInterface(name, attribs, operations, ext_attrs, inheritance, pos)
         if code == "attribute":
             attr = _read_attribute(parser, member_ext_attrs)
             attribs.append(attr)
@@ -348,7 +356,11 @@ def _top_level_items(parser: _Parser) -> list[WidlClass]:
         if type.value.type == Token.EOF:
             break
         name = parser.consume(Token.IDENT)
-        parser.consume(op("{"))
+        next_tok = parser.consume(op("{"), op(":"))
+        inheritance = None
+        if next_tok.value == op(":"):
+            inheritance = parser.consume(Token.IDENT).value.code
+            parser.consume(op("{"))
 
         try:
             reader = _TL_READERS[type.value.code]
@@ -356,7 +368,7 @@ def _top_level_items(parser: _Parser) -> list[WidlClass]:
             print(f'{type.pos}: error: unexpected "{type.value} {name.value}"')
             raise RuntimeError()
 
-        klass = reader(parser, name.value.code, iface_ext_attrs, name.pos)
+        klass = reader(parser, name.value.code, iface_ext_attrs, inheritance, name.pos)
         klass.partial = partial
         result.append(klass)
         if partial and type.value.code != "interface":

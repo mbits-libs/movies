@@ -31,7 +31,13 @@ namespace movies::v{{version}} {
 {{/ interfaces}}
 {{# interfaces}}
 
-	struct {{name}} {
+	struct {{name}} {{#inheritance}}: {{inheritance}} {{/inheritance}}{
+{{#ext_attrs}}
+{{#cpp_quote}}
+		{{cpp_quote}}
+
+{{/cpp_quote}}
+{{/ext_attrs}}
 {{#attributes}}
 {{? guards}}
 #if {{#guards}}defined({{guards}}){{/guards}}
@@ -59,7 +65,8 @@ namespace movies::v{{version}} {
 			{{#args}}{{type}}{{\}}
 			{{?ext_attrs.out}}&{{/ext_attrs.out}}{{\}}
 			{{^ext_attrs.out}}{{?ext_attrs.in}} const&{{/ext_attrs.in}}{{/ext_attrs.out}} {{\}}
-			{{name}}{{? comma}}, {{/comma}}{{/args}}{{\}}
+			{{name}}{{#ext_attrs}}{{#defaulted}} = {}{{/defaulted}}{{/ext_attrs}}{{\}}
+			{{? comma}}, {{/comma}}{{/args}}{{\}}
 		){{^ext_attrs.mutable}}{{^ ext_attrs.static}} const{{/ext_attrs.static}}{{/ext_attrs.mutable}}{{\}}
 		{{^ext_attrs.throws}} noexcept{{/ext_attrs.throws}}{{\}}
 		{{?ext_attrs.defaulted}} = default{{/ext_attrs.defaulted}}{{\}}

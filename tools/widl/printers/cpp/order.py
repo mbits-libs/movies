@@ -54,6 +54,8 @@ class ClassDependencies(TypeVisitor, ClassVisitor):
         self.current = obj.name
         self.refs[self.current] = set()
         self.types[self.current] = obj
+        if obj.inheritance is not None:
+            self.refs[self.current].add(obj.inheritance)
 
         for prop in obj.props:
             prop.type.on_type_visitor(self)

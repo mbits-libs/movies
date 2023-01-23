@@ -99,6 +99,7 @@ class InterfaceInfo:
     operations: list[OperationInfo]
     file_line: int
     file_name: str
+    inheritance: Optional[str]
 
 
 class HeaderContext(TemplateContext):
@@ -183,22 +184,32 @@ class Visitor(TypeVisitor, ClassVisitor):
                 operations,
                 file_line=obj.pos.line,
                 file_name=obj.pos.path,
+                inheritance=obj.inheritance,
             )
         )
 
     def _initial_ops(self, obj: WidlInterface) -> list[OperationInfo]:
         initial: list[OperationInfo] = []
 
-        load_from, merge_mode, merge_with, spaceship, load_postproc, merge_postproc = (
+        (
+            load_from,
+            merge_mode,
+            merge_with,
+            spaceship,
+            load_postproc,
+            merge_postproc,
+            nonjson,
+        ) = (
             obj.ext_attrs["from"],
             obj.ext_attrs["merge"],
             obj.ext_attrs["merge_with"],
             obj.ext_attrs["spaceship"],
             obj.ext_attrs["load_postproc"],
             obj.ext_attrs["merge_postproc"],
+            obj.ext_attrs["nonjson"],
         )
-        obj.ext_attrs["has_to_string"] = load_from != "none"
-        add_merge = merge_mode != "none"
+        obj.ext_attrs["has_to_string"] = load_from != "none" and not nonjson
+        add_merge = merge_mode != "none" and not nonjson
         comp_type, comp_op = ("auto", "<=>") if spaceship else ("bool", "==")
 
         initial.append(
@@ -211,7 +222,7 @@ class Visitor(TypeVisitor, ClassVisitor):
                 obj.pos,
             )
         )
-        if load_from != "none":
+        if load_from != "none" and not nonjson:
             initial.extend(
                 [
                     OperationInfo(
@@ -238,7 +249,7 @@ class Visitor(TypeVisitor, ClassVisitor):
                 ]
             )
 
-        if load_postproc:
+        if load_postproc and not nonjson:
             initial.append(
                 OperationInfo(
                     "load_postproc",

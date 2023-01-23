@@ -92,12 +92,13 @@ class Visitor(ClassVisitor):
         self.ctx = ctx
 
     def on_interface(self, obj: WidlInterface):
-        load_from, merge_mode, merge_with, load_postproc, merge_postproc = (
+        load_from, merge_mode, merge_with, load_postproc, merge_postproc, nonjson = (
             obj.ext_attrs["from"],
             obj.ext_attrs["merge"],
             obj.ext_attrs["merge_with"],
             obj.ext_attrs["load_postproc"],
             obj.ext_attrs["merge_postproc"],
+            obj.ext_attrs["nonjson"],
         )
         obj_ext_attrs = {**obj.ext_attrs}
         del (obj_ext_attrs["merge_with"],)
@@ -115,8 +116,8 @@ class Visitor(ClassVisitor):
         self.ctx.interfaces.append(
             InterfaceInfo(
                 obj.name,
-                add_merge=merge_mode == "auto",
-                add_serdes=load_from == "map",
+                add_merge=not nonjson and merge_mode == "auto",
+                add_serdes=not nonjson and load_from == "map",
                 ext_attrs=obj_ext_attrs,
                 attributes=attributes,
                 merge_with=[

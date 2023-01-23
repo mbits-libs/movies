@@ -88,14 +88,15 @@ class AttrMergeWith:
         return [arg.s for arg in attr.args]
 
 
-class LoadAs:
-    def __init__(self):
-        self.name = "load_as"
+class StringArg:
+    def __init__(self, name: str):
+        self.name = name
         self.default = None
 
     def __call__(self, attr: WidlExtAttribute):
         if len(attr.args) != 1:
             error(attr.name.pos, "`{}' requires exactly 1 argument".format(self.name))
+        print(f"visiting {self.name} with {attr.args[0]}")
         return attr.args[0].s
 
 
@@ -162,6 +163,8 @@ _interface_ext_attrs = [
     FlagArg("spaceship"),
     FlagArg("load_postproc"),
     FlagArg("merge_postproc"),
+    FlagArg("nonjson"),
+    StringArg("cpp_quote"),
 ]
 
 
@@ -172,7 +175,7 @@ def interface_ext_attrs(ext_attrs: list[WidlExtAttribute]):
 _attribute_ext_attrs = [
     SingleArg("empty", ["warn", "allow"], "warn"),
     FlagArg("or_value"),
-    LoadAs(),
+    StringArg("load_as"),
     Guard(),
     Guards(),
     Default(),
@@ -184,7 +187,7 @@ def attribute_ext_attrs(ext_attrs: list[WidlExtAttribute]):
     return _ext_attrs(ext_attrs, _attribute_ext_attrs)
 
 
-_oparg_ext_attrs = [FlagArg("in"), FlagArg("out")]
+_oparg_ext_attrs = [FlagArg("defaulted"), FlagArg("in"), FlagArg("out")]
 _operation_ext_attrs = [
     FlagArg("mutable"),
     FlagArg("throws"),

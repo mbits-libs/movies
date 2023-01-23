@@ -8,7 +8,7 @@ from .WidlExtAttribute import (
     operation_ext_attrs,
 )
 from ..types import file_pos
-from typing import Callable
+from typing import Callable, Optional
 
 
 class ClassVisitor:
@@ -209,13 +209,17 @@ class WidlInterface(WidlClass):
         props: list[WidlAttribute],
         ops: list[WidlOperation],
         ext_attrs: list[WidlExtAttribute],
+        inheritance: Optional[str],
         pos: file_pos,
     ):
         super().__init__("interface", name, ext_attrs, interface_ext_attrs, pos)
+        self.inheritance = inheritance
         self.props = props
         self.ops = ops
 
     def __str__(self):
+        if self.inheritance:
+            return f"interface {self.name} : {self.inheritance} (...)"
         return f"interface {self.name} (...)"
 
     def on_class_visitor(self, visitor: ClassVisitor):
