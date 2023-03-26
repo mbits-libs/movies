@@ -8,6 +8,7 @@ interface movie_info {
     [or_value] attribute sequence<string> age;
     attribute sequence<string> tags;
     attribute sequence<string> episodes;
+    attribute sequence<string> extras;
     attribute crew_info crew;
     attribute translatable<string> tagline;
     attribute translatable<string> summary;
