@@ -96,7 +96,6 @@ class StringArg:
     def __call__(self, attr: WidlExtAttribute):
         if len(attr.args) != 1:
             error(attr.name.pos, "`{}' requires exactly 1 argument".format(self.name))
-        print(f"visiting {self.name} with {attr.args[0]}")
         return attr.args[0].s
 
 

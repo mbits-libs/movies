@@ -174,6 +174,7 @@ if (TARGET Boost::python)
             ${CMAKE_CURRENT_SOURCE_DIR}/idl/movie_info_py3.widl
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/python/__init__.py
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/python/code.mustache
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/python/code_impl.mustache
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/widl/printers/python/pyi.mustache
         VERBATIM)
     

@@ -40,7 +40,7 @@ class {{name}}(int):
 {{#synthetic}}
 # synthetic
 {{/synthetic}}
-class {{name}}:
+class {{name}}{{#inheritance}}({{inheritance}}){{/inheritance}}:
 {{#attributes}}
 	{{name}}: {{type}} = ...
 {{/attributes}}

@@ -118,7 +118,7 @@ namespace movies::v1 {
 
 	bool movie_info__download_images(
 	    [[maybe_unused]] movie_info& self,
-	    [[maybe_unused]] string_type const& db_root,
+	    [[maybe_unused]] string_type const& img_root,
 	    [[maybe_unused]] image_diff& diff,
 	    [[maybe_unused]] string_type const& movie_id,
 	    [[maybe_unused]] string_type const& referer) {
@@ -128,7 +128,7 @@ namespace movies::v1 {
 		generic.reg_proto("http", curl);
 		generic.reg_proto("https", curl);
 
-		return self.download_images(as_fs_view(db_root), generic, diff,
+		return self.download_images(as_fs_view(img_root), generic, diff,
 		                            movie_id, as_ascii_view(referer), debug_on);
 #else
 		if (debug_on)
@@ -136,6 +136,22 @@ namespace movies::v1 {
 			             "this binary\n";
 		return true;
 #endif
+	}
+
+	void movies_config__read(movies_config& self,
+	                         string_type const& config_filename) {
+		self.read(as_fs_view(config_filename));
+	}
+
+	movies_config static__movies_config__from_dirs(
+	    std::optional<string_type> const& db_dir,
+	    std::optional<string_type> const& videos_dir) {
+		return movies_config::from_dirs(db_dir, videos_dir);
+	}
+
+	std::vector<loaded_movie> movies_config__load(movies_config const& self,
+	                                              bool store_updates) {
+		return self.load(store_updates);
 	}
 
 	json::node simpler(json::node value, int level);

@@ -7,11 +7,17 @@ partial interface movie_info {
     [external] void store_at(string path);
     [static, external] movie_info loads(string json);
     [static, external] movie_info load_from(string path);
-    [mutable, external] bool download_images(string db_root, [out] image_diff diff, string movie_id, string referer);
+    [mutable, external] bool download_images(string img_root, [out] image_diff diff, string movie_id, string referer);
 };
 
 partial interface poster_info {
     [mutable, external] void assign_small([in] image_url address);
     [mutable, external] void assign_normal([in] image_url address);
     [mutable, external] void assign_large([in] image_url address);
+};
+
+partial interface movies_config {
+	[mutable, external] void read([in] string config_filename);
+	[static, external] movies_config from_dirs([in] string? db_dir, [in] string? videos_dir);
+	[external] sequence<loaded_movie> load(bool store_updates);
 };

@@ -30,4 +30,7 @@ builtin_types = [
     "char",
     "bool",
     "alpha_2_aliases",
+    "object",
+    "tuple",
+    "list",
 ]

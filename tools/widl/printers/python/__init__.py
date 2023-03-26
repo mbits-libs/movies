@@ -1,5 +1,5 @@
-from typing import TextIO, Optional
-from dataclasses import dataclass
+from typing import TextIO, Optional, Tuple
+from dataclasses import dataclass, field
 from ...model import *
 from ..tmplt import TemplateContext
 
@@ -10,16 +10,21 @@ class Simple:
     alias: Optional[str]
     proxy: bool
     in_arg: bool
+    conv: Optional[Tuple[str, str]]
 
 
 def simple_type(
-    py: str, alias: Optional[str] = None, proxy: bool = False, in_arg: bool = False
+    py: str,
+    alias: Optional[str] = None,
+    proxy: bool = False,
+    in_arg: bool = False,
+    conv: Optional[Tuple[str, str]] = None,
 ):
-    return Simple(py, alias=alias, proxy=proxy, in_arg=in_arg)
+    return Simple(py, alias=alias, proxy=proxy, in_arg=in_arg, conv=conv)
 
 
 def py_type(py: str):
-    return Simple(py, alias=f"boost::python::{py}", proxy=False, in_arg=True)
+    return Simple(py, alias=f"boost::python::{py}", proxy=False, in_arg=True, conv=None)
 
 
 simple_types = {
@@ -38,6 +43,13 @@ simple_types = {
     "string": simple_type("str", alias="string_type", in_arg=True),
     "string_view": simple_type("str", alias="string_type", proxy=True, in_arg=True),
     "ascii": simple_type("str", alias="std::string", in_arg=True),
+    "path": simple_type(
+        "str",
+        alias="string_type",
+        proxy=True,
+        in_arg=True,
+        conv=("as_fs_view($expr$)", "as_string_v($expr$.generic_u8string())"),
+    ),
     "object": py_type("object"),
     "dict": py_type("dict"),
     "tuple": py_type("tuple"),
@@ -67,10 +79,23 @@ class AttributeInfo:
 
 
 @dataclass
+class CxxTypeConversion:
+    prefix: str
+    suffix: str
+
+
+@dataclass
+class CxxConversion:
+    arg: CxxTypeConversion
+    result: CxxTypeConversion
+
+
+@dataclass
 class ArgumentInfo:
     name: str
     type: str
     alias: str
+    conv: CxxConversion
     this: bool
     last: bool = False
 
@@ -80,6 +105,7 @@ class OperationInfo:
     name: str
     type: str
     alias: str
+    conv: CxxConversion
     staticmethod: bool
     classmethod: bool
     property: bool
@@ -98,6 +124,7 @@ class InterfaceInfo:
     is_translatable: bool
     synthetic: bool
     has_to_string: bool
+    inheritance: Optional[str]
 
     @property
     def has_constructor(self):
@@ -159,14 +186,27 @@ class VisitAllTypesWithEnums(VisitAllTypes):
         self.visitor.on_static_var()
 
 
-def arg_(name: str, type: str = "", alias: str = "", this: bool = False):
-    return ArgumentInfo(name=name, type=type, alias=alias, this=this)
+def no_conv():
+    return CxxConversion(
+        arg=CxxTypeConversion("", ""), result=CxxTypeConversion("", "")
+    )
+
+
+def arg_(
+    name: str,
+    type: str = "",
+    alias: str = "",
+    conv: CxxConversion = no_conv(),
+    this: bool = False,
+):
+    return ArgumentInfo(name=name, type=type, alias=alias, conv=conv, this=this)
 
 
 def method_def_(
     name: str,
     type: str = "",
     alias: str = "",
+    conv=no_conv(),
     arguments: list[ArgumentInfo] = [],
     staticmethod=False,
     classmethod=False,
@@ -181,6 +221,7 @@ def method_def_(
         name=name,
         type=type,
         alias=alias,
+        conv=conv,
         staticmethod=staticmethod,
         classmethod=classmethod,
         property=property,
@@ -195,6 +236,7 @@ def classmethod_(
     name: str,
     type: str = "",
     alias: str = "",
+    conv: CxxConversion = no_conv(),
     arguments: list[ArgumentInfo] = [],
     external=False,
     needs_proxy=False,
@@ -204,6 +246,7 @@ def classmethod_(
         name=name,
         type=type,
         alias=alias,
+        conv=conv,
         classmethod=True,
         arguments=[arg_("cls", this=True), *arguments],
         external=external,
@@ -216,6 +259,7 @@ def staticmethod_(
     name: str,
     type: str = "",
     alias: str = "",
+    conv: CxxConversion = no_conv(),
     arguments: list[ArgumentInfo] = [],
     external=False,
     needs_proxy=False,
@@ -225,6 +269,7 @@ def staticmethod_(
         name=name,
         type=type,
         alias=alias,
+        conv=conv,
         staticmethod=True,
         arguments=arguments,
         external=external,
@@ -237,6 +282,7 @@ def method_(
     name: str,
     type: str = "",
     alias: str = "",
+    conv: CxxConversion = no_conv(),
     arguments: list[ArgumentInfo] = [],
     external=False,
     needs_proxy=False,
@@ -246,6 +292,7 @@ def method_(
         name=name,
         type=type,
         alias=alias,
+        conv=conv,
         arguments=[arg_("self", this=True), *arguments],
         external=external,
         needs_proxy=needs_proxy,
@@ -273,6 +320,7 @@ def class_(
     is_vector=False,
     synthetic=True,
     has_to_string=True,
+    inheritance: Optional[str] = None,
 ):
     return InterfaceInfo(
         name,
@@ -282,6 +330,7 @@ def class_(
         is_translatable=is_translatable,
         synthetic=synthetic,
         has_to_string=has_to_string,
+        inheritance=inheritance,
     )
 
 
@@ -329,20 +378,24 @@ class Visitor(ClassVisitor):
                 arguments.append(
                     arg_(
                         arg.name,
-                        _py_type(arg.type, self.info.project_types),
-                        type_info.alias,
+                        type=_py_type(arg.type, self.info.project_types),
+                        alias=type_info.alias,
+                        conv=type_info.conv,
                     )
                 )
             if len(arguments):
                 arguments[-1].last = True
             staticmethod = op.ext_attrs["static"]
             ctor_ = staticmethod_ if staticmethod else method_
-            alias = _arg_type(op.type, self.info.project_types, {}).alias
+            result_type = _arg_type(op.type, self.info.project_types, {})
+            alias = result_type.alias
+            conv = result_type.conv
             operations.append(
                 ctor_(
                     op.name,
                     type=_py_type(op.type, self.info.project_types),
                     alias=alias,
+                    conv=conv,
                     arguments=arguments,
                     external=external or needs_proxy,
                     needs_proxy=needs_proxy,
@@ -358,7 +411,10 @@ class Visitor(ClassVisitor):
                 is_vector=obj.name in self.info.vectors,
                 is_translatable=is_translatable,
                 synthetic=False,
-                has_to_string=obj.ext_attrs["from"] != "none",
+                has_to_string=(
+                    not obj.ext_attrs["nonjson"] and obj.ext_attrs["from"] != "none"
+                ),
+                inheritance=obj.inheritance,
             )
         )
 
@@ -477,7 +533,8 @@ class CxxTypeInfo:
     in_arg: bool
     out_arg: bool
     needs_property: bool
-    project_type: bool
+    project_internal: bool
+    conv: CxxConversion
 
 
 @dataclass
@@ -489,7 +546,7 @@ class CxxArgTypes(TypeVisitor):
         type_info: CxxTypeInfo = self.on_subtype(obj)
         type_info.alias = f"std::optional<{type_info.alias}>"
         type_info.in_arg = True
-        type_info.needs_property |= type_info.project_type
+        type_info.needs_property |= type_info.project_internal
         return type_info
 
     def on_sequence(self, obj: WidlSequence):
@@ -514,16 +571,27 @@ class CxxArgTypes(TypeVisitor):
                 in_arg=in_arg,
                 out_arg=out_arg,
                 needs_property=False,
-                project_type=True,
+                project_internal=True,
+                conv=no_conv(),
             )
         simple = simple_types[obj.text]
+        conv_tuple = simple.conv
+        if conv_tuple is not None:
+            conv_arg, conv_result = (arg.split("$expr$") for arg in conv_tuple)
+            conv = CxxConversion(
+                arg=CxxTypeConversion(*conv_arg), result=CxxTypeConversion(*conv_result)
+            )
+        else:
+            conv = no_conv()
+
         return CxxTypeInfo(
             alias=simple.alias if simple.alias is not None else simple.py,
             proxy=simple.proxy,
             in_arg=simple.in_arg,
             out_arg=False,
             needs_property=False,
-            project_type=False,
+            project_internal=False,
+            conv=conv,
         )
 
 

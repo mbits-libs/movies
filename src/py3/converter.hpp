@@ -15,6 +15,7 @@
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 #include <boost/python/tuple.hpp>
 #include <optional>
+#include <filesystem>
 
 #define BOOST_PYTHON_RETURN_TO_PYTHON_BY_VALUE(T, expr, pytype)            \
 	template <>                                                            \
@@ -48,12 +49,19 @@ namespace boost::python {
 		    implicit_cast<ssize_t>(view.size()));
 	}
 
+	inline auto PyUnicode_from_path(std::filesystem::path const& path) {
+		return PyUnicode_from_view(path.generic_u8string());
+	}
+
 	inline auto PyLong_from_sys_seconds(date::sys_seconds const& timestamp) {
 		return ::PyLong_FromLongLong(timestamp.time_since_epoch().count());
 	}
 
 	BOOST_PYTHON_TO_PYTHON_BY_VALUE(std::u8string,
 	                                PyUnicode_from_view(x),
+	                                &PyUnicode_Type);
+	BOOST_PYTHON_TO_PYTHON_BY_VALUE(std::filesystem::path,
+	                                PyUnicode_from_path(x),
 	                                &PyUnicode_Type);
 	BOOST_PYTHON_TO_PYTHON_BY_VALUE(date::sys_seconds,
 	                                PyLong_from_sys_seconds(x),

@@ -61,7 +61,7 @@ namespace movies::v{{version}} {
 {{#interfaces}}
 {{^synthetic}}
 
-		class_<{{name}}>("{{name}}")
+		class_<{{name}}{{#inheritance}}, bases<{{inheritance}}>{{/inheritance}}>("{{name}}")
 {{#attributes}}
 {{#property}}
 			.add_property("{{name}}", make_getter(&{{interfaces.name}}::{{name}}))

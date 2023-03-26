@@ -64,6 +64,23 @@ namespace boost::python::converter {
 			static PyTypeObject const* get_pytype() { return &PyUnicode_Type; }
 		};
 
+		struct path_rvalue_from_python {
+			// If the underlying object is "string-able" this will succeed
+			static unaryfunc* get_slot(PyObject* obj) {
+				return (PyUnicode_Check(obj)) ? &py_unicode_as_string_unaryfunc
+				                              : 0;
+			};
+
+			// Remember that this will be used to construct the result
+			// object
+			static std::filesystem::path extract(PyObject* intermediate) {
+				return std::u8string(reinterpret_cast<char8_t const*>(
+				                         PyBytes_AsString(intermediate)),
+				                     PyBytes_Size(intermediate));
+			}
+			static PyTypeObject const* get_pytype() { return &PyUnicode_Type; }
+		};
+
 		struct sys_seconds_rvalue_from_python {
 			static unaryfunc* get_slot(PyObject* obj) {
 				return (PyLong_Check(obj)) ? &py_ident_unaryfunc : 0;
@@ -81,6 +98,8 @@ namespace boost::python::converter {
 
 	void initialize_movies_converters() {
 		slot_rvalue_from_python<std::u8string, u8string_rvalue_from_python>{};
+		slot_rvalue_from_python<std::filesystem::path,
+		                        path_rvalue_from_python>{};
 		slot_rvalue_from_python<date::sys_seconds,
 		                        sys_seconds_rvalue_from_python>{};
 

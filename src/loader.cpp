@@ -228,6 +228,20 @@ namespace movies {
 		static constexpr auto DIR_VIDEOS = "videos"sv;
 	}  // namespace
 
+	string_type loaded_movie::get_id() const noexcept {
+		if (info_file) return info_file->id;
+		if (video_file) return video_file->id;
+		return {};
+	}
+
+	std::filesystem::path movies_dirs::info_path(string_view_type id) const {
+		return infos / as_fs_view(id);
+	}
+
+	std::filesystem::path movies_dirs::video_path(string_view_type id) const {
+		return videos / as_fs_view(id);
+	}
+
 	void movies_config::read(fs::path const& config_filename,
 	                         callback const& cb) {
 		auto const data = io::contents(config_filename);

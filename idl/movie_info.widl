@@ -109,12 +109,15 @@ interface movies_dirs {
 	attribute path infos;
 	attribute path images;
 	attribute path videos;
+    [throws] path info_path(string_view id);
+    [throws] path video_path(string_view id);
 };
 
 [nonjson]
 interface loaded_movie : movie_info {
 	attribute file_ref? video_file;
 	attribute file_ref? info_file;
+    string get_id();
 };
 
 [nonjson]
@@ -127,7 +130,17 @@ enum prefer_title { "mine", "theirs" };
 
 enum prefer_details { "mine", "theirs" };
 
-enum media_kind { "movie", "part", "short_film", "collection", "series", "miniseries", "season", "episode" };
+enum media_kind {
+    "movie",
+    "part",
+    "extra",
+    "short_film",
+    "collection",
+    "series",
+    "miniseries",
+    "season",
+    "episode"
+};
 
 enum marker_type {
 	"bookmark",

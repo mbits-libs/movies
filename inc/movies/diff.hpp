@@ -8,10 +8,7 @@
 #include <vector>
 #include "fwd.hpp"
 
-namespace movies {
-	inline namespace v1 {
-		struct movie_info;
-	}
+namespace movies::v1 {
 
 	struct diff {
 		double ratio;
@@ -27,4 +24,8 @@ namespace movies {
 		vector<diff> calc();
 	};
 
-}  // namespace movies
+}  // namespace movies::v1
+
+namespace movies {
+	using namespace v1;
+}

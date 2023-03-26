@@ -4,7 +4,7 @@
 #pragma once
 
 #include <filesystem>
-#include <movies/types.hpp>
+#include <movies/movie_info.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>

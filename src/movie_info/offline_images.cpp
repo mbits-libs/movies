@@ -157,14 +157,13 @@ namespace movies::v1 {
 		};
 	}  // namespace
 
-	bool movie_info::download_images(std::filesystem::path const& db_root,
+	bool movie_info::download_images(std::filesystem::path const& img_root,
 	                                 tangle::nav::navigator& nav,
 	                                 image_diff& diff,
 	                                 string_view_type movie_id,
 	                                 tangle::uri const& referer,
 	                                 bool debug) {
 		std::error_code ec{};
-		auto const img_root = db_root / "img"sv;
 		fs::create_directories(img_root / movie_id, ec);
 		if (ec) return false;
 

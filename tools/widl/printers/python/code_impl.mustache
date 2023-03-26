@@ -20,9 +20,14 @@ namespace movies::v{{version}} {
 {{#this}}{{interfaces.name}}{{^ext_attrs.mutable}} const{{/ext_attrs.mutable}}&{{/this}}{{\}}
 {{^this}}{{alias}}{{/this}} {{name}}{{^last}}, {{/last}}{{/arguments}}{{\}}
 	) {
-		return {{#staticmethod}}{{interfaces.name}}::{{/staticmethod}}{{\}}
-		{{^staticmethod}}{{#arguments}}{{#this}}{{name}}.{{/this}}{{/arguments}}{{/staticmethod}}{{\}}
-		{{name}}({{#arguments}}{{^this}}{{name}}{{^last}}, {{/last}}{{/this}}{{/arguments}});
+		return {{#conv.result}}{{prefix}}{{/conv.result}}{{\}}
+			{{#staticmethod}}{{interfaces.name}}::{{/staticmethod}}{{\}}
+			{{^staticmethod}}{{#arguments}}{{#this}}{{name}}.{{/this}}{{/arguments}}{{/staticmethod}}{{\}}
+			{{name}}({{#arguments}}{{^this}}{{\}}
+				{{! each argument, which is not a "this", with convertion as needed}}
+				{{#conv.arg}}{{prefix}}{{/conv.arg}}{{name}}{{#conv.arg}}{{suffix}}{{/conv.arg}}{{\}}
+			{{^last}}, {{/last}}{{/this}}{{/arguments}}){{\}}
+		{{#conv.result}}{{suffix}}{{/conv.result}};
 	}
 {{/needs_proxy}}
 {{/external}}
